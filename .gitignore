@@ -1,0 +1,15 @@
+node_modules/
+.wxt/
+.output/
+coverage/
+dist/
+validation/
+web-ext.config.ts
+*.log
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+.DS_Store
+Thumbs.db
