@@ -1,0 +1,49 @@
+name: 问题反馈 / Bug report
+description: 报告可复现的界面、数据或平台适配问题。
+title: "[Bug] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢帮助改进 zMatrix。平台能力仍处于开发验收阶段，请先查看 [验收记录](https://github.com/zJay26/zMatrix/blob/main/docs/acceptance.md)。
+        不要上传 Cookie、令牌、私有稿件、账号信息或完整备份；截图请先检查隐私内容。
+  - type: input
+    id: version
+    attributes:
+      label: 版本与环境 / Version and environment
+      placeholder: "zMatrix v0.1.2 / Edge 版本 / Windows 版本；或源码 commit"
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: 涉及模块 / Area
+      options:
+        - 编辑与平台版本
+        - 图文制作
+        - 平台草稿或发布准备
+        - 数据与评论
+        - 备份与恢复
+        - 安装或界面
+        - 其他
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: 复现步骤 / Steps to reproduce
+      description: 平台问题请注明平台、内容类型，以及运行于真实扩展还是网页预览。
+      placeholder: "1. 打开…\n2. 点击…\n3. 出现…"
+    validations:
+      required: true
+  - type: textarea
+    id: result
+    attributes:
+      label: 预期与实际结果 / Expected and actual behavior
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: 脱敏截图或错误信息 / Sanitized evidence
+      description: 请只附与问题相关的内容，不上传完整备份或登录数据。

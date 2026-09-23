@@ -1,0 +1,24 @@
+name: 功能建议 / Feature request
+description: 描述一个具体创作场景，以及希望减少的重复工作。
+title: "[Feature] "
+body:
+  - type: markdown
+    attributes:
+      value: 请先查看 [路线图](https://github.com/zJay26/zMatrix/blob/main/docs/ROADMAP.md)，当前优先完成 v1 真实平台验收。
+  - type: textarea
+    id: scenario
+    attributes:
+      label: 使用场景 / Use case
+      description: 你现在如何完成这项工作？在哪一步遇到困难？
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: 期望行为 / Proposed behavior
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: 替代办法与补充信息 / Alternatives and context

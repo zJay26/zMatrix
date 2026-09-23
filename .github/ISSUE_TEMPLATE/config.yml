@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: 安装、更新与备份
+    url: https://github.com/zJay26/zMatrix/blob/main/docs/installation.md
+    about: 查看开发者模式加载、版本更新和数据恢复说明。
+  - name: 平台能力与验收状态
+    url: https://github.com/zJay26/zMatrix/blob/main/docs/acceptance.md
+    about: 确认某项远端能力是否已经通过真实验证。
