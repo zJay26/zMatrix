@@ -1,5 +1,7 @@
 <p align="center">
-  <img src="public/icon/128.png" width="96" alt="zMatrix logo" />
+  <a href="https://github.com/zJay26/zMatrix/releases">
+    <img src="public/icon/256.png" width="144" alt="zMatrix logo" />
+  </a>
 </p>
 <h1 align="center">zMatrix</h1>
 <p align="center"><strong>One draft. A voice for every platform.</strong><br />A local-first workspace for creators, delivered as a Microsoft Edge extension.</p>
@@ -25,6 +27,8 @@
 Keep a master draft, tailor titles and content for each platform, prepare image posts, and track the work locally.
 
 **Master draft → platform variants → images and preview → draft / publication preparation → manual publication → registration and tracking**
+
+![zMatrix: one draft, a voice for every platform](docs/assets/hero.png)
 
 ![Master draft, platform variants and Markdown preview](docs/assets/editor.png)
 

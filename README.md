@@ -1,6 +1,10 @@
 <p align="center">
-  <img src="docs/assets/hero.png" alt="zMatrix 自媒体矩阵工作台：一份母稿，多种表达" width="100%" />
+  <a href="https://github.com/zJay26/zMatrix/releases">
+    <img src="public/icon/256.png" alt="zMatrix 图标" width="144" />
+  </a>
 </p>
+
+<h1 align="center">zMatrix</h1>
 
 <p align="center">
   <strong>写好一份母稿，为不同平台保留各自的表达。</strong><br />
@@ -32,6 +36,8 @@
 同一篇内容发到多个平台，常常意味着重复排版、修改标题、搬运图片，以及追踪不同版本。zMatrix 把这些工作放在同一个本地空间：保留母稿，针对平台单独调整，需要时再进入原站完成发布。
 
 **一份母稿 → 平台版本 → 图文与预览 → 保存草稿／准备发布 → 手动最终发布 → 登记与跟踪**
+
+![zMatrix 自媒体矩阵工作台：一份母稿，多种表达](docs/assets/hero.png)
 
 ## 界面预览
 
