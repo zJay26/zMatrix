@@ -167,15 +167,9 @@ textarea:focus-visible {
 .brand-mark {
   width: 43px;
   height: 43px;
-  display: grid;
-  place-items: center;
-  border: 2px solid var(--blue);
-  border-radius: 12px 12px 4px 12px;
-  color: var(--blue);
-  font-family: "Microsoft YaHei", sans-serif;
-  font-size: 26px;
-  letter-spacing: 0;
-  box-shadow: 4px 4px 0 #e1e8fe;
+  display: block;
+  flex-shrink: 0;
+  object-fit: contain;
 }
 .brand small {
   display: block;
@@ -1619,8 +1613,7 @@ textarea:focus-visible {
   }
   .brand-mark {
     width: 36px;
-    height: 38px;
-    font-size: 23px;
+    height: 36px;
   }
   .brand > span:last-child,
   .new-article,

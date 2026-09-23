@@ -129,7 +129,13 @@ export function App() {
             });
           }}
         >
-          <span className="brand-mark">z</span>
+          <img
+            className="brand-mark"
+            src="/icon/zmatrix.svg"
+            alt=""
+            width={43}
+            height={43}
+          />
           <span>
             zMatrix<small>自媒体矩阵工作台</small>
           </span>
