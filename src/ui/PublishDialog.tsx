@@ -116,10 +116,6 @@ export function PublishDialog({
               </label>
             ))}
         </div>
-        <p className="muted">
-          使用 Edge
-          中当前登录账号。准备发布会停在最终提交前，由你在原站手动发布。未核对齐全的设置会单独提示。
-        </p>
       </div>
       {error && <Alert>{error}</Alert>}
       {!!prepared.length && (

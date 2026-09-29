@@ -2,9 +2,9 @@ import { unified } from "unified";
 import remarkParse from "remark-parse";
 import remarkGfm from "remark-gfm";
 import { db, changed, type WorkbenchDB } from "./db";
-import { addAsset, assetIdsIn } from "./assets";
+import { prepareAsset, assetIdsIn } from "./assets";
 import { newArticle } from "./variants";
-import type { Article } from "./model";
+import type { Article, Asset } from "./model";
 
 interface LinkNode {
   type: string;
@@ -38,6 +38,8 @@ export async function importMarkdownFiles(
   if (!markdownFiles.length)
     throw new Error("请选择 Markdown 文件，或包含 Markdown 和图片的文件夹。");
   const articles: Article[] = [];
+  const staged = new Map<string, Asset>();
+  const preparedFiles = new Map<File, Asset>();
   const indexed = files.map((file) => ({
     file,
     path: normalizePath(file.webkitRelativePath || file.name),
@@ -79,7 +81,10 @@ export async function importMarkdownFiles(
         throw new Error(
           `找不到配套图片「${decoded}」。请连同图片文件夹一起导入。`,
         );
-      const asset = await addAsset(matches[0]!.file, database);
+      const image = matches[0]!.file;
+      const asset = preparedFiles.get(image) ?? (await prepareAsset(image));
+      preparedFiles.set(image, asset);
+      staged.set(asset.id, asset);
       const start = ref.position?.start.offset;
       const end = ref.position?.end.offset;
       if (start === undefined || end === undefined)
@@ -107,7 +112,19 @@ export async function importMarkdownFiles(
     article.imageIds = assetIdsIn(markdown);
     articles.push(article);
   }
-  await database.articles.bulkAdd(articles);
-  await changed(database);
+  await database.transaction(
+    "rw",
+    database.articles,
+    database.assets,
+    database.meta,
+    async () => {
+      for (const asset of staged.values()) {
+        if (!(await database.assets.get(asset.id)))
+          await database.assets.add(asset);
+      }
+      await database.articles.bulkAdd(articles);
+      await changed(database);
+    },
+  );
   return articles;
 }

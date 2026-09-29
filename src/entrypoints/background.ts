@@ -1,7 +1,7 @@
 import { defineBackground } from "wxt/utils/define-background";
 import { db, changed } from "../core/db";
 import { adapterFor } from "../platforms/browser-adapter";
-import { canStart, patchTask, recoverTask } from "../core/tasks";
+import { claimTask, patchTask, recoverTask } from "../core/tasks";
 import {
   messageOf,
   uid,
@@ -11,8 +11,17 @@ import {
 } from "../core/model";
 import { refreshPost } from "../core/collection";
 import { z } from "zod";
+import {
+  checkForUpdates,
+  syncUpdateAlarm,
+  UPDATE_ALARM,
+  UPDATE_KEY,
+  getUpdateState,
+} from "../core/updates";
 
 const command = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("checkUpdates"), manual: z.boolean().optional() }),
+  z.object({ type: z.literal("configureUpdates") }),
   z.object({ type: z.literal("run"), ids: z.array(z.string()).max(100) }),
   z.object({ type: z.literal("pause") }),
   z.object({ type: z.literal("probe"), channel: z.enum(channelIds) }),
@@ -24,6 +33,28 @@ const command = z.discriminatedUnion("type", [
   }),
 ]);
 export default defineBackground(() => {
+  const automaticUpdateCheck = async () => {
+    try {
+      await syncUpdateAlarm();
+      await checkForUpdates();
+    } catch {
+      await db.meta
+        .put({
+          key: UPDATE_KEY,
+          value: {
+            ...(await getUpdateState()),
+            error: "自动检查未完成，请在设置中重试",
+          },
+        })
+        .catch(() => {});
+    }
+  };
+  chrome.alarms.onAlarm.addListener((alarm) => {
+    if (alarm.name === UPDATE_ALARM) void automaticUpdateCheck();
+  });
+  chrome.runtime.onInstalled.addListener(() => void automaticUpdateCheck());
+  chrome.runtime.onStartup.addListener(() => void automaticUpdateCheck());
+  void automaticUpdateCheck();
   const owner = uid();
   let running = false;
   let collectionRunning = false;
@@ -96,20 +127,10 @@ export default defineBackground(() => {
     try {
       for (const id of ids) {
         if (pauseRequested) break;
-        let task = await db.tasks.get(id);
-        if (!task || !canStart(task)) continue;
+        let task = await claimTask(id, owner);
+        if (!task) continue;
         let mutated = false;
         try {
-          await db.transaction("rw", db.tasks, async () => {
-            const latest = await db.tasks.get(id);
-            if (!latest || !canStart(latest))
-              throw new Error("任务已被其他执行器领取");
-            await db.tasks.update(id, {
-              state: "preparing",
-              owner,
-              updatedAt: Date.now(),
-            });
-          });
           const adapter = adapterFor(task.channel);
           const context = await adapter.prepare(
             task.snapshot,
@@ -183,6 +204,15 @@ export default defineBackground(() => {
     }
     const request = parsed.data;
     void (async () => {
+      if (request.type === "checkUpdates") {
+        await checkForUpdates({ manual: request.manual });
+        return { ok: true };
+      }
+      if (request.type === "configureUpdates") {
+        await syncUpdateAlarm();
+        await checkForUpdates();
+        return { ok: true };
+      }
       await initialized;
       if (request.type === "pause") {
         pauseRequested = true;

@@ -8,9 +8,8 @@ const mimeByExtension: Record<string, string> = {
   webp: "image/webp",
   gif: "image/gif",
 };
-export async function addAsset(
+export async function prepareAsset(
   file: Blob & { name?: string },
-  database: WorkbenchDB = db,
 ): Promise<Asset> {
   const type =
     file.type ||
@@ -18,19 +17,33 @@ export async function addAsset(
   if (!type || !Object.values(mimeByExtension).includes(type))
     throw new Error("图片只支持 PNG、JPEG、WebP 和 GIF。");
   if (file.size > 30 * 1024 * 1024) throw new Error("单张图片不能超过 30 MB。");
-  const id = await sha256(await file.arrayBuffer());
-  const existing = await database.assets.get(id);
-  if (existing) return existing;
-  const asset: Asset = {
+  const bytes = await file.arrayBuffer();
+  const id = await sha256(bytes);
+  return {
     id,
     name: file.name ?? `${id.slice(0, 12)}.png`,
     type,
-    blob: new Blob([await file.arrayBuffer()], { type }),
+    blob: new Blob([bytes], { type }),
     createdAt: Date.now(),
   };
-  await database.assets.add(asset);
-  await changed(database);
-  return asset;
+}
+export async function addAsset(
+  file: Blob & { name?: string },
+  database: WorkbenchDB = db,
+): Promise<Asset> {
+  const asset = await prepareAsset(file);
+  return database.transaction(
+    "rw",
+    database.assets,
+    database.meta,
+    async () => {
+      const existing = await database.assets.get(asset.id);
+      if (existing) return existing;
+      await database.assets.add(asset);
+      await changed(database);
+      return asset;
+    },
+  );
 }
 export function blobDataUrl(blob: Blob): Promise<string> {
   return new Promise((resolve, reject) => {

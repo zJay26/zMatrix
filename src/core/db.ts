@@ -51,13 +51,27 @@ export async function getMeta<T>(
 ): Promise<T> {
   return ((await database.meta.get(key))?.value as T | undefined) ?? fallback;
 }
-export async function saveArticle(article: Article, database = db) {
+interface SaveGuard<T> {
+  expected: T | undefined;
+}
+function checkExpected<T>(previous: T | undefined, guard?: SaveGuard<T>) {
+  if (guard && JSON.stringify(previous) !== JSON.stringify(guard.expected))
+    throw new Error(
+      "稿件已在其他窗口更新。请保留当前编辑，另存为新稿后再打开最新版本。",
+    );
+}
+export async function saveArticle(
+  article: Article,
+  database = db,
+  guard?: SaveGuard<Article>,
+) {
   await database.transaction(
     "rw",
     database.articles,
     database.meta,
     async () => {
       const previous = await database.articles.get(article.id);
+      checkExpected(previous, guard);
       if (
         previous &&
         (previous.revision > article.revision ||
@@ -70,7 +84,19 @@ export async function saveArticle(article: Article, database = db) {
     },
   );
 }
-export async function saveVariant(variant: Variant, database = db) {
-  await database.variants.put(variant);
-  await changed(database);
+export async function saveVariant(
+  variant: Variant,
+  database = db,
+  guard?: SaveGuard<Variant>,
+) {
+  await database.transaction(
+    "rw",
+    database.variants,
+    database.meta,
+    async () => {
+      checkExpected(await database.variants.get(variant.id), guard);
+      await database.variants.put(variant);
+      await changed(database);
+    },
+  );
 }

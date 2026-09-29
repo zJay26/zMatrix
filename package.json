@@ -1,6 +1,6 @@
 {
   "name": "zmatrix",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "description": "zMatrix · 本地优先的自媒体矩阵工作台",

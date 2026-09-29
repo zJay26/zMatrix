@@ -1,4 +1,5 @@
-import { zipSync, unzipSync, strToU8, strFromU8 } from "fflate";
+import { unzipSync, strToU8, strFromU8 } from "fflate";
+import { zipFiles } from "./archive";
 import { z } from "zod";
 import { db, changed, type WorkbenchDB } from "./db";
 import {
@@ -200,36 +201,7 @@ export async function exportBackup(
       assets: records.assets.map(({ blob, ...asset }) => asset),
     }),
   );
-  if (typeof Worker === "undefined")
-    return new Blob([zipSync(files, { level: 3 }) as Uint8Array<ArrayBuffer>], {
-      type: "application/zip",
-    });
-  return new Promise((resolve, reject) => {
-    const worker = new Worker(new URL("./zip-worker.ts", import.meta.url), {
-      type: "module",
-    });
-    const finish = () => {
-      clearTimeout(timeout);
-      worker.terminate();
-    };
-    const timeout = setTimeout(() => {
-      finish();
-      reject(new Error("备份压缩超时，本地数据仍保留。"));
-    }, 60000);
-    worker.onmessage = (
-      event: MessageEvent<{ bytes?: Uint8Array<ArrayBuffer>; error?: string }>,
-    ) => {
-      finish();
-      if (event.data.bytes)
-        resolve(new Blob([event.data.bytes], { type: "application/zip" }));
-      else reject(new Error(event.data.error ?? "备份压缩失败"));
-    };
-    worker.onerror = () => {
-      finish();
-      reject(new Error("备份压缩进程未能运行，本地数据仍保留。"));
-    };
-    worker.postMessage(files);
-  });
+  return zipFiles(files);
 }
 export async function inspectBackup(blob: Blob) {
   if (blob.size > 200 * 1024 * 1024)

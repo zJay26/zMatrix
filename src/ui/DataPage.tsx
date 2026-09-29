@@ -82,13 +82,7 @@ export function DataPage({ commentsMode = false }: { commentsMode?: boolean }) {
     <div className="page">
       <div className="page-heading">
         <div>
-          <p className="eyebrow">已登记的文章</p>
           <h1>{commentsMode ? "评论收件箱" : "文章数据"}</h1>
-          <p>
-            {commentsMode
-              ? "集中查看讨论，回复时回到原站。"
-              : "保留各平台的指标名称、来源和采集时间。"}
-          </p>
         </div>
         <div className="button-row">
           <button disabled={!!refreshing?.value} onClick={() => void refresh()}>
@@ -275,7 +269,6 @@ export function DataPage({ commentsMode = false }: { commentsMode?: boolean }) {
       {showRegister && (
         <Modal title="登记已有文章" onClose={() => setShowRegister(false)}>
           <div className="form-stack">
-            <p className="muted">只登记链接和基本信息，不导入原站正文。</p>
             <label>
               平台
               <select
