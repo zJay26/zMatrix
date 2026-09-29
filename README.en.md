@@ -20,7 +20,7 @@
 </p>
 
 > [!IMPORTANT]
-> **v0.1.2 is a developer preview.** Local editing, variants and backups are implemented. None of the 12 real-platform draft/pre-publication acceptance flows have passed yet; live metrics and comments also remain unverified. You always perform the final publication on the platform yourself. See the [acceptance record](docs/acceptance.md).
+> **v0.2.0 is a developer preview.** Local editing, variants and backups are implemented. None of the 12 real-platform draft/pre-publication acceptance flows have passed yet; live metrics and comments also remain unverified. You always perform the final publication on the platform yourself. See the [acceptance record](docs/acceptance.md).
 
 ## Your content, in one workspace
 
@@ -32,15 +32,21 @@ Keep a master draft, tailor titles and content for each platform, prepare image 
 
 ![Master draft, platform variants and Markdown preview](docs/assets/editor.png)
 
-| Feature | Current implementation |
-| --- | --- |
-| Writing and import | Markdown editor, files with companion images, pasted text and images |
-| Platform variants | Inherited or overridden titles, content and images; change reminders, diffs and snapshots |
-| Technical content | Code, tables, LaTeX and Mermaid previews; selected content converted to images as needed |
-| Image posts | Three templates, covers, colors, typography and pagination; 1080 × 1440 PNG export |
-| Publication preparation | Frozen content, persistent sequential tasks and a manual final publication step |
-| Tracking | Registered article links, cached metrics, paginated comments and local read status; live integrations await validation |
-| Storage and backup | IndexedDB autosave, ZIP export/restore and backups to an authorized local folder |
+| Feature                 | Current implementation                                                                                                                                                  |
+| ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Writing and import      | Markdown formatting toolbar, focus/split/reading views, atomic import with companion images, pasted text and images                                                     |
+| Content library         | Multi-term title/body/platform-tag search, platform and publication-record filters, sorting, list view, pagination, duplication and bulk archiving with undo            |
+| Platform variants       | Inherited or overridden titles, content and images; change reminders, diffs and snapshots                                                                               |
+| Technical content       | Code, tables, LaTeX and Mermaid previews; selected content converted to images as needed                                                                                |
+| Image posts             | Three templates, covers, colors, typography and pagination; 1080 × 1440 PNG export                                                                                      |
+| Publication preparation | Frozen content, persistent sequential tasks and a manual final publication step                                                                                         |
+| Tracking                | Registered article links, cached metrics, paginated comments and local read status; live integrations await validation                                                  |
+| Storage and backup      | Coalesced autosave, multi-window conflict protection with save-as-copy recovery, ZIP backup/restore and authorized-folder backups                                       |
+| Portable content        | Export a version or multiple articles as Markdown ZIPs, with platform metadata and images referenced by relative paths                                                  |
+| Preferences             | Larger default typography, independent interface/editor font sizes, default views and startup refresh preferences saved locally                                         |
+| Update checks           | Check releases every six hours or manually, choose whether to include previews, and download updates on request; unpacked extensions are replaced and reloaded manually |
+
+These features are included in the v0.2.0 development preview. [Workflow and export guide (Chinese)](docs/workbench.md).
 
 <details>
 <summary>See the image-post studio</summary>
@@ -49,27 +55,27 @@ Keep a master draft, tailor titles and content for each platform, prepare image 
 
 </details>
 
-Screenshots show the actual local web preview with the built-in sample article. They do not show live platform integration or private account data. Screenshots may be ahead of the published v0.1.2 package. The application UI is currently in Chinese.
+Screenshots show the local web preview with the built-in sample article. They do not show live platform integration or private account data. The application UI is currently in Chinese.
 
 ## Platform status
 
 Adapter code is not proof of a working platform flow.
 
-| Platform / content type | Save and reopen draft | Complete preparation before final publication | Live metrics / comments |
-| --- | --- | --- | --- |
-| Zhihu · article | Pending | Pending | Pending |
-| Juejin · article | Pending | Pending | Pending |
-| CNBlogs · article | Pending | Pending | Pending |
-| CSDN · article | Pending | Pending | Pending |
-| Xiaohongshu · long article | Pending | Pending | Pending |
-| Xiaohongshu · image post | Pending | Pending | Pending |
-| LINUX DO | Manual assistance | Manual assistance | Best effort; unverified |
+| Platform / content type    | Save and reopen draft | Complete preparation before final publication | Live metrics / comments |
+| -------------------------- | --------------------- | --------------------------------------------- | ----------------------- |
+| Zhihu · article            | Pending               | Pending                                       | Pending                 |
+| Juejin · article           | Pending               | Pending                                       | Pending                 |
+| CNBlogs · article          | Pending               | Pending                                       | Pending                 |
+| CSDN · article             | Pending               | Pending                                       | Pending                 |
+| Xiaohongshu · long article | Pending               | Pending                                       | Pending                 |
+| Xiaohongshu · image post   | Pending               | Pending                                       | Pending                 |
+| LINUX DO                   | Manual assistance     | Manual assistance                             | Best effort; unverified |
 
 Missing settings completed manually do not count as successful automation. Uncertain results require verification before retrying.
 
 ## Get started
 
-1. Download the extension ZIP from [Releases](https://github.com/zJay26/zMatrix/releases), such as `zMatrix-edge-0.1.2.zip`, and extract it to a permanent folder.
+1. Download the extension ZIP from [Releases](https://github.com/zJay26/zMatrix/releases), such as `zMatrix-edge-0.2.0.zip`, and extract it to a permanent folder.
 2. Open `edge://extensions`, enable **Developer mode**, select **Load unpacked**, and choose the folder containing `manifest.json`.
 3. Open **zMatrix** from the browser toolbar. Try the sample article, then connect platforms and configure backups as needed.
 

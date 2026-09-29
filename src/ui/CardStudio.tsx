@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Download, Images, LoaderCircle } from "lucide-react";
-import { zipSync } from "fflate";
+import { zipFiles } from "../core/archive";
 import { defaultCardOptions, makeCards, type CardOptions } from "../core/cards";
 import { downloadBlob } from "../core/assets";
 import { messageOf } from "../core/model";
@@ -45,15 +45,20 @@ export function CardStudio({
     }
   };
   const download = async () => {
-    const files: Record<string, Uint8Array> = {};
-    for (const [index, card] of cards.entries())
-      files[`图文-${index + 1}.png`] = new Uint8Array(await card.arrayBuffer());
-    downloadBlob(
-      new Blob([zipSync(files) as Uint8Array<ArrayBuffer>], {
-        type: "application/zip",
-      }),
-      "zMatrix-图文.zip",
-    );
+    setBusy(true);
+    setError("");
+    try {
+      const files: Record<string, Uint8Array> = {};
+      for (const [index, card] of cards.entries())
+        files[`图文-${index + 1}.png`] = new Uint8Array(
+          await card.arrayBuffer(),
+        );
+      downloadBlob(await zipFiles(files), "zMatrix-图文.zip");
+    } catch (e) {
+      setError(messageOf(e));
+    } finally {
+      setBusy(false);
+    }
   };
   return (
     <Modal title="把文字排成图文" onClose={onClose} wide>

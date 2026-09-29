@@ -9,9 +9,13 @@ import {
   ExternalLink,
   Copy,
   GitCompareArrows,
+  Download,
+  Save,
 } from "lucide-react";
 import { diffLines } from "diff";
 import { db, changed, saveArticle, saveVariant } from "../core/db";
+import { SaveQueue } from "../core/autosave";
+import { copyDraft } from "../core/library";
 import { channelFor, channels } from "../platforms/catalog";
 import {
   clearOverride,
@@ -71,28 +75,39 @@ export function EditorPage({
   onBack,
   onQueue,
   onFlushReady,
+  onOpenCopy,
+  defaultViewMode = "split",
 }: {
   initial: Article;
   onBack: () => void;
   onQueue: () => void;
   onFlushReady: (flush: () => Promise<boolean>) => void;
+  onOpenCopy: (article: Article) => void;
+  defaultViewMode?: "split" | "source" | "preview";
 }) {
   const [article, setArticle] = useState(initial);
   const articleRef = useRef(article);
   const [selected, setSelected] = useState<ChannelId | "master">("master");
-  const stored = useLiveQuery(
+  const storedQuery = useLiveQuery(
     () => db.variants.where("articleId").equals(initial.id).toArray(),
     [initial.id],
-    [],
   );
+  const stored = storedQuery ?? [];
   const [localVariants, setLocalVariants] = useState<Record<string, Variant>>(
     {},
   );
   const localRef = useRef(localVariants);
-  const chain = useRef(Promise.resolve());
-  const [saving, setSaving] = useState(0);
-  const [saveFailed, setSaveFailed] = useState(false);
-  const failed = useRef(false);
+  const [saveStatus, setSaveStatus] = useState({ pending: false, error: "" });
+  const [saveQueue] = useState(() => new SaveQueue(setSaveStatus));
+  const committedArticle = useRef(initial);
+  const committedVariants = useRef(new Map<string, Variant | undefined>());
+  const uploads = useRef(new Set<Promise<void>>());
+  const [uploading, setUploading] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [viewMode, setViewMode] = useState<"split" | "source" | "preview">(
+    defaultViewMode,
+  );
+  const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
   const [selection, setSelection] = useState("");
   const [studio, setStudio] = useState(false);
@@ -118,31 +133,32 @@ export function EditorPage({
     [initial.id],
     [],
   );
-  const write = (fn: () => Promise<unknown>) => {
-    setSaving((s) => s + 1);
-    chain.current = chain.current
-      .then(fn)
-      .then(() => {
-        failed.current = false;
-        setSaveFailed(false);
-      })
-      .catch((e) => {
-        failed.current = true;
-        setSaveFailed(true);
-        setError(messageOf(e));
-      })
-      .finally(() => setSaving((s) => s - 1));
-  };
   const putVariant = (next: Variant) => {
+    if (!committedVariants.current.has(next.channel))
+      committedVariants.current.set(
+        next.channel,
+        stored.find((v) => v.channel === next.channel),
+      );
+    next = { ...next, updatedAt: Date.now() };
     localRef.current = { ...localRef.current, [next.channel]: next };
     setLocalVariants(localRef.current);
-    write(() => saveVariant(next));
+    saveQueue.enqueue(next.id, async () => {
+      await saveVariant(next, db, {
+        expected: committedVariants.current.get(next.channel),
+      });
+      committedVariants.current.set(next.channel, next);
+    });
   };
   const currentVariant = (id: ChannelId) =>
     localRef.current[id] ??
     stored.find((v) => v.channel === id) ??
     newVariant(articleRef.current, id);
   const change = <K extends keyof Content>(key: K, value: Content[K]) => {
+    const current = resolveContent(
+      articleRef.current,
+      selected === "master" ? undefined : currentVariant(selected),
+    );
+    if (JSON.stringify(current[key]) === JSON.stringify(value)) return;
     if (selected === "master") {
       const next = {
         ...articleRef.current,
@@ -152,7 +168,10 @@ export function EditorPage({
       };
       articleRef.current = next;
       setArticle(next);
-      write(() => saveArticle(next));
+      saveQueue.enqueue("master", async () => {
+        await saveArticle(next, db, { expected: committedArticle.current });
+        committedArticle.current = next;
+      });
     } else putVariant(setOverride(currentVariant(selected), key, value));
   };
   const reset = (key: keyof Content) => {
@@ -161,7 +180,7 @@ export function EditorPage({
         clearOverride(currentVariant(selected), key, article.revision),
       );
   };
-  const importImages = async (files: File[]) => {
+  const doImportImages = async (files: File[]) => {
     try {
       const imported = [];
       for (const file of files) imported.push(await addAsset(file));
@@ -184,25 +203,66 @@ export function EditorPage({
       setError(messageOf(error));
     }
   };
+  const importImages = (files: File[]) => {
+    if (!files.length) return;
+    setUploading(true);
+    const job = doImportImages(files).finally(() => {
+      uploads.current.delete(job);
+      setUploading(uploads.current.size > 0);
+    });
+    uploads.current.add(job);
+  };
+  const flush = async () => {
+    while (uploads.current.size) await Promise.all([...uploads.current]);
+    return saveQueue.flush();
+  };
   useEffect(() => {
     const handler = (event: BeforeUnloadEvent) => {
-      if (saving || saveFailed) {
+      if (
+        saveQueue.status.pending ||
+        saveQueue.status.error ||
+        uploads.current.size
+      ) {
         event.preventDefault();
+        event.returnValue = "";
       }
     };
     window.addEventListener("beforeunload", handler);
     return () => window.removeEventListener("beforeunload", handler);
-  }, [saving, saveFailed]);
+  }, [saveQueue]);
   useEffect(() => {
-    onFlushReady(async () => {
-      await chain.current;
-      return !failed.current;
-    });
-    return () => onFlushReady(async () => true);
-  }, [onFlushReady]);
+    onFlushReady(flush);
+    const keydown = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") {
+        event.preventDefault();
+        void flush();
+      }
+    };
+    window.addEventListener("keydown", keydown);
+    return () => {
+      onFlushReady(async () => true);
+      window.removeEventListener("keydown", keydown);
+    };
+  }, [onFlushReady, saveQueue]);
   const switchPage = async (action: () => void) => {
-    await chain.current;
-    if (!failed.current) action();
+    if (await flush()) action();
+  };
+  const exportContent = async () => {
+    setExporting(true);
+    setError("");
+    try {
+      const { exportCurrentContent, safeFilename } =
+        await import("../core/export");
+      downloadBlob(
+        await exportCurrentContent(content, variant?.metadata),
+        `${safeFilename(content.title)}.zip`,
+      );
+      setNotice("当前版本已导出，包含 Markdown、稿件信息和配套图片。");
+    } catch (e) {
+      setError(messageOf(e));
+    } finally {
+      setExporting(false);
+    }
   };
   return (
     <div className="editor-page">
@@ -211,14 +271,23 @@ export function EditorPage({
           <ArrowLeft size={18} />
           内容库
         </button>
-        <span className="save-state">
-          <i className={saving ? "pending" : ""} />
-          {saving
-            ? "正在保存…"
-            : saveFailed
-              ? "保存失败，请保留页面"
+        <span className="save-state" role="status">
+          <i
+            className={saveStatus.pending || saveStatus.error ? "pending" : ""}
+          />
+          {saveStatus.error
+            ? "尚有未保存的编辑"
+            : saveStatus.pending || uploading
+              ? "正在保存…"
               : "本地已保存"}
         </span>
+        <button
+          disabled={exporting || uploading}
+          onClick={() => void exportContent()}
+        >
+          <Download size={16} />
+          导出当前版本
+        </button>
         <button onClick={() => setStudio(true)}>
           <Images size={17} />
           制作图文
@@ -234,15 +303,23 @@ export function EditorPage({
       <div className="version-strip" aria-label="稿件版本">
         <button
           className={selected === "master" ? "active master-tab" : "master-tab"}
-          onClick={() => setSelected("master")}
+          onClick={() => {
+            setSelection("");
+            setSelected("master");
+          }}
+          disabled={uploading}
         >
-          母稿<span>所有平台的起点</span>
+          母稿
         </button>
         {channels.map((c) => (
           <button
             key={c.id}
             className={selected === c.id ? "active" : ""}
-            onClick={() => setSelected(c.id)}
+            onClick={() => {
+              setSelection("");
+              setSelected(c.id);
+            }}
+            disabled={!storedQuery || uploading}
           >
             <i style={{ background: c.color }} />
             {c.short}
@@ -255,6 +332,52 @@ export function EditorPage({
         ))}
       </div>
       {error && <Alert>{error}</Alert>}
+      {notice && (
+        <div className="success-notice editor-notice" role="status">
+          {notice}
+          <button className="text-button" onClick={() => setNotice("")}>
+            关闭
+          </button>
+        </div>
+      )}
+      {saveStatus.error && (
+        <Alert>
+          <p>{saveStatus.error}</p>
+          <div className="button-row">
+            <button onClick={() => void saveQueue.retry()}>重试保存</button>
+            <button
+              disabled={exporting || uploading}
+              onClick={() => {
+                setExporting(true);
+                const articleAtStart = articleRef.current;
+                const variantsAtStart = localRef.current;
+                void copyDraft(articleAtStart, Object.values(variants))
+                  .then((copy) => {
+                    if (
+                      articleRef.current !== articleAtStart ||
+                      localRef.current !== variantsAtStart
+                    ) {
+                      setNotice(
+                        "副本已保存到内容库。另存期间又有新的编辑，请再次另存以保留最新内容。",
+                      );
+                      return;
+                    }
+                    saveQueue.discard();
+                    onOpenCopy(copy);
+                  })
+                  .catch((e) => setError(messageOf(e)))
+                  .finally(() => setExporting(false));
+              }}
+            >
+              <Save size={15} />
+              另存为新稿
+            </button>
+          </div>
+          <p>
+            当前编辑仍保留在此页面。另存会复制母稿和平台版本，原稿保持原样。
+          </p>
+        </Alert>
+      )}
       {isVariantBehind(article, variant) && (
         <div className="version-notice">
           母稿已更新，此平台的独立内容保持原样。
@@ -354,8 +477,36 @@ export function EditorPage({
           </a>
         </div>
       )}
-      <div className="writing-grid">
-        <section className="source-pane">
+      <div className="writing-toolbar">
+        <div className="view-switch" aria-label="编辑视图">
+          {(
+            [
+              ["source", "专注写作"],
+              ["split", "双栏对照"],
+              ["preview", "阅读预览"],
+            ] as const
+          ).map(([id, label]) => (
+            <button
+              key={id}
+              aria-pressed={viewMode === id}
+              className={viewMode === id ? "selected" : ""}
+              onClick={() => setViewMode(id)}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        <span className="muted">
+          {content.markdown.length.toLocaleString()} 字符 · 约{" "}
+          {Math.max(
+            1,
+            Math.ceil(content.markdown.replace(/\s/g, "").length / 500),
+          )}{" "}
+          分钟阅读
+        </span>
+      </div>
+      <div className={`writing-grid writing-${viewMode}`}>
+        <section className="source-pane" hidden={viewMode === "preview"}>
           <header>
             <span>Markdown 源码</span>
             <div>
@@ -385,12 +536,14 @@ export function EditorPage({
             onPasteImage={(files) => void importImages(files)}
           />
         </section>
-        <section className="preview-pane">
+        <section className="preview-pane" hidden={viewMode === "source"}>
           <header>
             <span>内容预览</span>
             <span>{content.markdown.length.toLocaleString()} 字符</span>
           </header>
-          <MarkdownPreview value={content.markdown} />
+          {viewMode !== "source" && (
+            <MarkdownPreview value={content.markdown} />
+          )}
         </section>
       </div>
       <input
@@ -527,7 +680,10 @@ export function EditorPage({
               ids,
             );
             putVariant(next);
-            await chain.current;
+            if (!(await saveQueue.flush()))
+              throw new Error(
+                "图文已加入当前编辑，但尚未保存成功。请处理保存提示。",
+              );
             setSelected("xiaohongshu:note");
           }}
         />

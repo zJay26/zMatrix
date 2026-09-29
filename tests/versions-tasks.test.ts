@@ -9,7 +9,14 @@ import {
   freezeSnapshot,
   snapshotDiffers,
 } from "../src/core/variants";
-import { enqueue, canStart, recoverTask, patchTask } from "../src/core/tasks";
+import {
+  enqueue,
+  canStart,
+  recoverTask,
+  patchTask,
+  claimTask,
+  cancelTask,
+} from "../src/core/tasks";
 import { saveArticle } from "../src/core/db";
 
 const db = database();
@@ -62,6 +69,37 @@ describe("母稿和平台版本", () => {
   });
 });
 describe("任务恢复与重复提交", () => {
+  it("先取消的任务不能再被领取，也不会被改回失败", async () => {
+    const [task] = await enqueue([await fixture()], "draft", db);
+    await cancelTask(task!.id, db);
+    expect(await claimTask(task!.id, "worker", db)).toBeUndefined();
+    expect((await db.tasks.get(task!.id))?.state).toBe("cancelled");
+  });
+
+  it("已被后台领取的任务不能由旧页面取消或重复领取", async () => {
+    const [task] = await enqueue([await fixture()], "draft", db);
+    expect((await claimTask(task!.id, "worker-a", db))?.state).toBe(
+      "preparing",
+    );
+    await expect(cancelTask(task!.id, db)).rejects.toThrow("不能取消");
+    expect(await claimTask(task!.id, "worker-b", db)).toBeUndefined();
+    expect((await db.tasks.get(task!.id))?.owner).toBe("worker-a");
+  });
+
+  it("有提交痕迹的失败或已取消任务不能绕过重复排队保护", async () => {
+    for (const state of ["failed", "cancelled"] as const) {
+      await db.tasks.clear();
+      const f = await fixture();
+      const [task] = await enqueue([f], "draft", db);
+      await patchTask(task!.id, { state, tabId: 42 }, "准备向平台提交", db);
+      await expect(enqueue([f], "draft", db)).rejects.toThrow("已有任务");
+    }
+  });
+
+  it("已经打开并填充原站页面的失败任务需要核实，不能重新执行", async () => {
+    const [task] = await enqueue([await fixture()], "draft", db);
+    expect(canStart({ ...task!, state: "failed", tabId: 42 })).toBe(false);
+  });
   it("等待手动发布或核对的任务在重启后保持暂停边界，不能重复执行", async () => {
     const [task] = await enqueue([await fixture()], "publish", db);
     for (const state of ["awaiting_publish", "awaiting_review"] as const) {

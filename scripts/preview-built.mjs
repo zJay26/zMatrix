@@ -2,6 +2,9 @@ import { createServer } from "node:http";
 import { readFile } from "node:fs/promises";
 import { resolve, sep, extname } from "node:path";
 const root = resolve(import.meta.dirname, "../.output/edge-mv3");
+const port = Number(process.env.PORT ?? 4173);
+if (!Number.isInteger(port) || port < 1 || port > 65535)
+  throw new Error("PORT must be an integer between 1 and 65535");
 const mime = {
   ".html": "text/html; charset=utf-8",
   ".js": "text/javascript; charset=utf-8",
@@ -38,8 +41,8 @@ const server = createServer(async (request, response) => {
     response.writeHead(404).end("Not found");
   }
 });
-server.listen(4173, "127.0.0.1", () =>
+server.listen(port, "127.0.0.1", () =>
   console.log(
-    "Built UI with extension CSP: http://127.0.0.1:4173 (no platform permissions)",
+    `Built UI with extension CSP: http://127.0.0.1:${port} (no platform permissions)`,
   ),
 );

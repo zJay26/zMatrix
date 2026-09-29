@@ -7,6 +7,10 @@ import {
   ExternalLink,
   Plug,
   ScanLine,
+  SlidersHorizontal,
+  RefreshCw,
+  Type,
+  Check,
 } from "lucide-react";
 import { db } from "../core/db";
 import {
@@ -22,7 +26,28 @@ import { connectChannel, isExtension } from "../platforms/browser-adapter";
 import { messageOf } from "../core/model";
 import { Alert, Modal, PlatformPill, command, timeLabel } from "./shared";
 import { version } from "../../package.json";
-export function SettingsPage() {
+import {
+  defaultPreferences,
+  savePreferences,
+  type Preferences,
+} from "../core/preferences";
+import { UpdateSettings } from "./UpdateSettings";
+export type SettingsTab = "general" | "platforms" | "backup" | "updates";
+const settingsTabs = [
+  { id: "general", label: "通用偏好", icon: SlidersHorizontal },
+  { id: "platforms", label: "平台连接", icon: Plug },
+  { id: "backup", label: "数据备份", icon: FolderOpen },
+  { id: "updates", label: "软件更新", icon: RefreshCw },
+] as const;
+export function SettingsPage({
+  preferences,
+  tab,
+  onTabChange,
+}: {
+  preferences: Preferences;
+  tab: SettingsTab;
+  onTabChange: (tab: SettingsTab) => void;
+}) {
   const probes = useLiveQuery(() => db.probes.toArray(), [], []);
   const backup = useLiveQuery(() => db.meta.get("backupCompletedAt"));
   const directory = useLiveQuery(() => db.meta.get("backupDirectory"));
@@ -57,176 +82,348 @@ export function SettingsPage() {
       await directoryBackup(handle);
     }, "备份目录已设置，首次备份已完成。");
   };
+  const changePreference = (patch: Partial<Preferences>) => {
+    setError("");
+    void savePreferences(patch)
+      .then(async () => {
+        if (
+          isExtension() &&
+          ("autoCheckUpdates" in patch || "includePrereleases" in patch)
+        )
+          await command({ type: "configureUpdates" });
+      })
+      .catch((e) => setError(messageOf(e)));
+  };
   return (
-    <div className="page">
+    <div className="page settings-page">
       <div className="page-heading">
         <div>
-          <p className="eyebrow">连接与保管</p>
-          <h1>平台与备份</h1>
-          <p>登录保留在浏览器，稿件和素材保留在本机。</p>
+          <h1>设置</h1>
         </div>
         <span className="version-badge">v{version} · 开发预览</span>
       </div>
+      <nav className="settings-tabs" aria-label="设置分类">
+        {settingsTabs.map(({ id, label, icon: Icon }) => (
+          <button
+            key={id}
+            aria-current={tab === id ? "page" : undefined}
+            className={tab === id ? "active" : undefined}
+            onClick={() => {
+              onTabChange(id);
+              setError("");
+              setNotice("");
+            }}
+          >
+            <Icon size={19} />
+            {label}
+          </button>
+        ))}
+      </nav>
       {error && <Alert>{error}</Alert>}
       {notice && (
         <div className="success-notice" role="status">
           {notice}
         </div>
       )}
-      {!isExtension() && (
-        <Alert>
-          当前为网页界面预览。平台操作需要加载 Edge
-          扩展；此处的本地数据与扩展数据相互独立。
-        </Alert>
+      {!isExtension() && tab === "platforms" && (
+        <Alert>平台连接需要在 Edge 扩展中使用。</Alert>
       )}
-      <section className="settings-section">
-        <div className="section-intro">
-          <h2>平台连接</h2>
-          <p>连接时只申请该平台的访问权限。“检查页面”只读，不填稿、不发布。</p>
-        </div>
-        <div className="platform-settings">
-          {channels.map((channel) => {
-            const probe = probes.find((p) => p.channel === channel.id);
-            return (
-              <div className="platform-setting" key={channel.id}>
-                <div>
-                  <PlatformPill id={channel.id} />
-                  <h3>{channel.name}</h3>
-                  <p>
-                    {channel.manual
-                      ? "人工发布辅助"
-                      : probe?.problems.length
-                        ? probe.problems.join("；")
-                        : probe?.editorFound
-                          ? "已识别编辑器 · 发布结果尚待实测"
-                          : "尚未检查编辑器"}
-                  </p>
-                  <small>
-                    {probe
-                      ? `检查于 ${timeLabel(probe.checkedAt)}${probe.account ? " · " + probe.account : ""}`
-                      : "草稿、发布、数据、评论分别验收"}
-                  </small>
-                </div>
-                <div className="button-row">
-                  <a href={channel.editorUrl} target="_blank" rel="noreferrer">
-                    原站
-                    <ExternalLink size={14} />
-                  </a>
-                  <button
-                    disabled={busy || !isExtension()}
-                    onClick={() => {
-                      const permission = connectChannel(channel.id);
-                      void act(async () => {
-                        if (!(await permission))
-                          throw new Error("尚未授予平台权限");
-                      }, "平台访问权限已开启。");
-                    }}
-                  >
-                    <Plug size={15} />
-                    连接
-                  </button>
-                  <button
-                    disabled={busy || !isExtension() || channel.manual}
-                    onClick={() =>
-                      void act(() =>
-                        command({ type: "probe", channel: channel.id }),
-                      )
+      {tab === "general" && (
+        <>
+          <section
+            className="settings-section appearance-settings"
+            aria-labelledby="appearance-heading"
+          >
+            <div className="settings-section-heading">
+              <h2 id="appearance-heading">
+                <Type size={21} />
+                字体与阅读
+              </h2>
+              <span className="settings-saved">
+                <Check size={15} />
+                自动保存
+              </span>
+            </div>
+            <div className="appearance-grid">
+              <div>
+                <div className="font-setting">
+                  <label htmlFor="interface-font-size">界面字号</label>
+                  <output htmlFor="interface-font-size">
+                    {preferences.fontSize}
+                    <span>px</span>
+                  </output>
+                  <input
+                    id="interface-font-size"
+                    type="range"
+                    min="14"
+                    max="22"
+                    step="1"
+                    value={preferences.fontSize}
+                    onChange={(e) =>
+                      changePreference({ fontSize: Number(e.target.value) })
                     }
-                  >
-                    <ScanLine size={15} />
-                    检查页面
-                  </button>
+                  />
+                  <div className="range-labels">
+                    <span>14</span>
+                    <span>标准 16</span>
+                    <span>22</span>
+                  </div>
+                </div>
+                <div className="font-setting">
+                  <label htmlFor="editor-font-size">编辑与预览字号</label>
+                  <output htmlFor="editor-font-size">
+                    {preferences.editorFontSize}
+                    <span>px</span>
+                  </output>
+                  <input
+                    id="editor-font-size"
+                    type="range"
+                    min="14"
+                    max="26"
+                    step="1"
+                    value={preferences.editorFontSize}
+                    onChange={(e) =>
+                      changePreference({
+                        editorFontSize: Number(e.target.value),
+                      })
+                    }
+                  />
+                  <div className="range-labels">
+                    <span>14</span>
+                    <span>标准 17</span>
+                    <span>26</span>
+                  </div>
                 </div>
               </div>
-            );
-          })}
-        </div>
-      </section>
-      <section className="settings-section">
-        <div className="section-intro">
-          <h2>文件夹备份</h2>
-          <p>
-            本地自动保存独立运行。目录备份保留当前与上一份自动备份，手动导出生成独立文件。
-          </p>
-        </div>
-        <div className="backup-panel">
-          <FolderOpen size={34} />
-          <div>
-            <h3>{directory ? "已选择备份目录" : "尚未设置备份目录"}</h3>
-            <p>最近完成：{timeLabel(backup?.value as number | undefined)}</p>
+              <div className="type-preview" aria-label="字号预览">
+                <span className="preview-caption">阅读预览</span>
+                <h3>让表达，清晰一点。</h3>
+                <p>
+                  从一个想法，到一篇好文章。
+                  <br />
+                  在舒适的节奏里，专注写作。
+                </p>
+                <div className="type-preview-meta">
+                  <span>zMatrix</span>
+                  <span>Aa · 你好 · 0123</span>
+                </div>
+              </div>
+            </div>
+          </section>
+          <section
+            className="settings-section"
+            aria-labelledby="workspace-heading"
+          >
+            <div className="section-intro">
+              <h2 id="workspace-heading">工作区偏好</h2>
+            </div>
+            <label className="preference-row" htmlFor="default-library-layout">
+              <span>内容库默认视图</span>
+              <select
+                id="default-library-layout"
+                value={preferences.libraryLayout}
+                onChange={(e) =>
+                  changePreference({
+                    libraryLayout: e.target
+                      .value as Preferences["libraryLayout"],
+                  })
+                }
+              >
+                <option value="grid">卡片视图</option>
+                <option value="list">列表视图</option>
+              </select>
+            </label>
+            <label className="preference-row" htmlFor="default-editor-layout">
+              <span>编辑器默认视图</span>
+              <select
+                id="default-editor-layout"
+                value={preferences.editorLayout}
+                onChange={(e) =>
+                  changePreference({
+                    editorLayout: e.target.value as Preferences["editorLayout"],
+                  })
+                }
+              >
+                <option value="split">编辑与预览</option>
+                <option value="source">仅编辑</option>
+                <option value="preview">仅预览</option>
+              </select>
+            </label>
+            <label className="preference-row" htmlFor="refresh-on-open">
+              <span>打开工作台时刷新文章数据</span>
+              <input
+                id="refresh-on-open"
+                className="switch-input"
+                type="checkbox"
+                role="switch"
+                checked={preferences.refreshOnOpen}
+                onChange={(e) =>
+                  changePreference({ refreshOnOpen: e.target.checked })
+                }
+              />
+            </label>
+            <div className="settings-reset">
+              <button
+                onClick={() =>
+                  changePreference({
+                    fontSize: defaultPreferences.fontSize,
+                    editorFontSize: defaultPreferences.editorFontSize,
+                    libraryLayout: defaultPreferences.libraryLayout,
+                    editorLayout: defaultPreferences.editorLayout,
+                    refreshOnOpen: defaultPreferences.refreshOnOpen,
+                  })
+                }
+              >
+                恢复默认偏好
+              </button>
+            </div>
+          </section>
+        </>
+      )}
+      {tab === "updates" && (
+        <UpdateSettings preferences={preferences} onChange={changePreference} />
+      )}
+      {tab === "platforms" && (
+        <section className="settings-section">
+          <div className="section-intro">
+            <h2>平台连接</h2>
           </div>
-          <button onClick={choose} disabled={busy}>
-            授权备份目录
-          </button>
-          <button
-            disabled={!directory || busy}
-            onClick={() =>
-              void act(
-                () =>
-                  directoryBackup(
-                    directory!.value as FileSystemDirectoryHandle,
-                  ),
-                "备份已完成。",
-              )
-            }
-          >
-            立即备份
-          </button>
-        </div>
-        <div className="button-row">
-          <button
-            disabled={busy}
-            onClick={() =>
-              void act(
-                async () =>
-                  downloadBlob(
-                    await exportBackup(),
-                    `zMatrix-备份-${new Date().toISOString().slice(0, 10)}.zip`,
-                  ),
-                "备份已导出。",
-              )
-            }
-          >
-            <Download size={16} />
-            导出完整备份
-          </button>
-          <button disabled={busy} onClick={() => input.current?.click()}>
-            <Upload size={16} />
-            恢复备份
-          </button>
-          <input
-            type="file"
-            accept=".zip"
-            hidden
-            ref={input}
-            onChange={(e) => {
-              const file = e.target.files?.[0];
-              if (file)
-                void act(async () => {
-                  const data = await inspectBackup(file);
-                  setRestore({
-                    file,
-                    articles: data.articles.length,
-                    assets: data.assets.length,
+          <div className="platform-settings">
+            {channels.map((channel) => {
+              const probe = probes.find((p) => p.channel === channel.id);
+              return (
+                <div className="platform-setting" key={channel.id}>
+                  <div>
+                    <PlatformPill id={channel.id} />
+                    <h3>{channel.name}</h3>
+                    <p>
+                      {channel.manual
+                        ? "人工发布辅助"
+                        : probe?.problems.length
+                          ? probe.problems.join("；")
+                          : probe?.editorFound
+                            ? "已识别编辑器"
+                            : "尚未检查编辑器"}
+                    </p>
+                    {probe && (
+                      <small>
+                        检查于 {timeLabel(probe.checkedAt)}
+                        {probe.account ? " · " + probe.account : ""}
+                      </small>
+                    )}
+                  </div>
+                  <div className="button-row">
+                    <a
+                      href={channel.editorUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      原站
+                      <ExternalLink size={14} />
+                    </a>
+                    <button
+                      disabled={busy || !isExtension()}
+                      onClick={() => {
+                        const permission = connectChannel(channel.id);
+                        void act(async () => {
+                          if (!(await permission))
+                            throw new Error("尚未授予平台权限");
+                        }, "平台访问权限已开启。");
+                      }}
+                    >
+                      <Plug size={15} />
+                      连接
+                    </button>
+                    <button
+                      disabled={busy || !isExtension() || channel.manual}
+                      onClick={() =>
+                        void act(() =>
+                          command({ type: "probe", channel: channel.id }),
+                        )
+                      }
+                    >
+                      <ScanLine size={15} />
+                      检查页面
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      )}
+      {tab === "backup" && (
+        <section className="settings-section">
+          <div className="section-intro">
+            <h2>文件夹备份</h2>
+          </div>
+          <div className="backup-panel">
+            <FolderOpen size={34} />
+            <div>
+              <h3>{directory ? "已选择备份目录" : "尚未设置备份目录"}</h3>
+              <p>最近完成：{timeLabel(backup?.value as number | undefined)}</p>
+            </div>
+            <button onClick={choose} disabled={busy}>
+              授权备份目录
+            </button>
+            <button
+              disabled={!directory || busy}
+              onClick={() =>
+                void act(
+                  () =>
+                    directoryBackup(
+                      directory!.value as FileSystemDirectoryHandle,
+                    ),
+                  "备份已完成。",
+                )
+              }
+            >
+              立即备份
+            </button>
+          </div>
+          <div className="button-row">
+            <button
+              disabled={busy}
+              onClick={() =>
+                void act(
+                  async () =>
+                    downloadBlob(
+                      await exportBackup(),
+                      `zMatrix-备份-${new Date().toISOString().slice(0, 10)}.zip`,
+                    ),
+                  "备份已导出。",
+                )
+              }
+            >
+              <Download size={16} />
+              导出完整备份
+            </button>
+            <button disabled={busy} onClick={() => input.current?.click()}>
+              <Upload size={16} />
+              恢复备份
+            </button>
+            <input
+              type="file"
+              accept=".zip"
+              hidden
+              ref={input}
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file)
+                  void act(async () => {
+                    const data = await inspectBackup(file);
+                    setRestore({
+                      file,
+                      articles: data.articles.length,
+                      assets: data.assets.length,
+                    });
                   });
-                });
-              e.target.value = "";
-            }}
-          />
-        </div>
-      </section>
-      <section className="settings-section">
-        <div className="section-intro">
-          <h2>验收状态</h2>
-          <p>
-            当前验收为 6 条草稿保存与 6
-            条发布前准备流程。最终发布由你在原站手动完成；五站数据与评论另行验证。
-          </p>
-        </div>
-        <p className="muted">
-          首次打开工作台刷新已登记文章；关闭后不定期采集。来源指标缺失时保留为空，不补零。
-        </p>
-      </section>
+                e.target.value = "";
+              }}
+            />
+          </div>
+        </section>
+      )}
       {restore && (
         <Modal title="恢复本地备份" onClose={() => setRestore(null)}>
           <div className="form-stack">

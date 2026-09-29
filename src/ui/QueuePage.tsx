@@ -1,11 +1,34 @@
 import { useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
-import { Play, Pause, ExternalLink, RefreshCw } from "lucide-react";
+import { Play, Pause, ExternalLink, RefreshCw, Search } from "lucide-react";
 import { db } from "../core/db";
-import { canStart, patchTask, stateNames } from "../core/tasks";
+import {
+  canStart,
+  cancelTask,
+  hasRemoteActivity,
+  stateNames,
+} from "../core/tasks";
 import { messageOf } from "../core/model";
 import { Alert, Empty, PlatformPill, command, timeLabel } from "./shared";
 import { isExtension } from "../platforms/browser-adapter";
+import { channels } from "../platforms/catalog";
+const taskGroups = {
+  all: { label: "全部任务", states: [] as string[] },
+  pending: { label: "待执行", states: ["queued", "paused"] },
+  active: { label: "执行中", states: ["preparing", "submitting", "verifying"] },
+  attention: {
+    label: "需要处理",
+    states: [
+      "failed",
+      "uncertain",
+      "awaiting_publish",
+      "awaiting_review",
+      "submitted",
+      "reviewing",
+    ],
+  },
+  done: { label: "已完成", states: ["draft_saved", "published", "cancelled"] },
+};
 export function QueuePage() {
   const tasks = useLiveQuery(
     () => db.tasks.orderBy("createdAt").reverse().toArray(),
@@ -15,6 +38,19 @@ export function QueuePage() {
   const queueError = useLiveQuery(() => db.meta.get("queueError"));
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [group, setGroup] = useState<keyof typeof taskGroups>("all");
+  const [channel, setChannel] = useState("all");
+  const [query, setQuery] = useState("");
+  const [limit, setLimit] = useState(30);
+  const filtered = tasks.filter(
+    (task) =>
+      (group === "all" || taskGroups[group].states.includes(task.state)) &&
+      (channel === "all" || task.channel === channel) &&
+      task.snapshot.title
+        .toLocaleLowerCase()
+        .includes(query.trim().toLocaleLowerCase()),
+  );
+  const runnable = filtered.filter(canStart);
   const act = async (message: unknown) => {
     setBusy(true);
     setError("");
@@ -30,43 +66,91 @@ export function QueuePage() {
     <div className="page">
       <div className="page-heading">
         <div>
-          <p className="eyebrow">发布进度</p>
           <h1>任务队列</h1>
-          <p>稿件版本固定保存。准备发布停在最终提交前，由你在原站手动完成。</p>
         </div>
         <div className="button-row">
-          <button onClick={() => void act({ type: "pause" })}>
+          <button disabled={busy} onClick={() => void act({ type: "pause" })}>
             <Pause size={16} />
             暂停队列
           </button>
           <button
             className="primary"
-            disabled={busy || !tasks.some(canStart)}
+            disabled={busy || !runnable.length}
             onClick={() =>
               void act({
                 type: "run",
-                ids: tasks
-                  .filter(canStart)
-                  .reverse()
-                  .map((t) => t.id),
+                ids: [...runnable].reverse().map((t) => t.id),
               })
             }
           >
             <Play size={16} />
-            执行待处理任务
+            执行筛选内任务（{runnable.length}）
           </button>
         </div>
       </div>
       {!!(error || queueError?.value) && (
         <Alert>{error || String(queueError?.value)}</Alert>
       )}
+      <div className="queue-filters">
+        <div className="tabs" aria-label="任务状态">
+          {Object.entries(taskGroups).map(([id, item]) => (
+            <button
+              key={id}
+              aria-pressed={group === id}
+              className={group === id ? "active" : ""}
+              onClick={() => {
+                setGroup(id as keyof typeof taskGroups);
+                setLimit(30);
+              }}
+            >
+              {item.label}
+              <span>
+                {id === "all"
+                  ? tasks.length
+                  : tasks.filter((t) => item.states.includes(t.state)).length}
+              </span>
+            </button>
+          ))}
+        </div>
+        <div className="library-filters">
+          <select
+            aria-label="任务平台"
+            value={channel}
+            onChange={(e) => {
+              setChannel(e.target.value);
+              setLimit(30);
+            }}
+          >
+            <option value="all">全部平台</option>
+            {channels.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </select>
+          <label className="search-box">
+            <Search size={16} />
+            <input
+              aria-label="搜索任务"
+              placeholder="搜索任务标题"
+              value={query}
+              onChange={(e) => {
+                setQuery(e.target.value);
+                setLimit(30);
+              }}
+            />
+          </label>
+        </div>
+      </div>
       {!tasks.length ? (
         <Empty title="还没有发布任务" action={null}>
           在稿件中打开“发布预览”，选择平台后加入队列。
         </Empty>
+      ) : !filtered.length ? (
+        <Empty title="没有匹配的任务">调整平台、状态或关键词后再试。</Empty>
       ) : (
         <div className="task-list">
-          {tasks.map((task) => (
+          {filtered.slice(0, limit).map((task) => (
             <article key={task.id} className="task-card">
               <header>
                 <PlatformPill id={task.channel} />
@@ -113,14 +197,17 @@ export function QueuePage() {
                   "reviewing",
                   "awaiting_publish",
                   "awaiting_review",
-                ].includes(task.state) && (
+                ].includes(task.state) ||
+                (["failed", "cancelled"].includes(task.state) &&
+                  hasRemoteActivity(task)) ? (
                   <button
+                    disabled={busy}
                     onClick={() => void act({ type: "verify", id: task.id })}
                   >
                     <RefreshCw size={14} />
                     核实原站结果
                   </button>
-                )}
+                ) : null}
                 {(task.remoteUrl || task.editorUrl) && (
                   <a
                     href={task.remoteUrl || task.editorUrl}
@@ -131,14 +218,13 @@ export function QueuePage() {
                     <ExternalLink size={14} />
                   </a>
                 )}
-                {["queued", "paused", "failed"].includes(task.state) && (
+                {canStart(task) && (
                   <button
                     className="text-button"
+                    disabled={busy}
                     onClick={() =>
-                      void patchTask(
-                        task.id,
-                        { state: "cancelled" },
-                        "用户取消待执行任务",
+                      void cancelTask(task.id).catch((e) =>
+                        setError(messageOf(e)),
                       )
                     }
                   >
@@ -162,6 +248,14 @@ export function QueuePage() {
               </details>
             </article>
           ))}
+        </div>
+      )}
+      {filtered.length > limit && (
+        <div className="pagination">
+          <button onClick={() => setLimit((n) => n + 30)}>再显示 30 条</button>
+          <span>
+            已显示 {limit} / {filtered.length} 条
+          </span>
         </div>
       )}
     </div>

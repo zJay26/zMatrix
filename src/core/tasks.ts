@@ -29,12 +29,20 @@ export const terminalStates: TaskState[] = [
   "published",
   "cancelled",
 ];
+export function hasRemoteActivity(task: Task) {
+  return (
+    task.tabId !== undefined ||
+    !!task.remoteId ||
+    !!task.remoteUrl ||
+    task.events.some((e) =>
+      ["准备向平台提交", "开始准备平台内容"].includes(e.message),
+    )
+  );
+}
 export function canStart(task: Task) {
   return (
     ["queued", "paused", "failed"].includes(task.state) &&
-    !task.remoteId &&
-    !task.remoteUrl &&
-    !task.events.some((e) => e.message === "准备向平台提交")
+    !hasRemoteActivity(task)
   );
 }
 export function recoverTask(task: Task): Task {
@@ -80,7 +88,8 @@ export async function enqueue(
             e.snapshot.fingerprint === task.snapshot.fingerprint &&
             e.channel === task.channel &&
             e.mode === task.mode &&
-            !["cancelled", "failed"].includes(e.state),
+            (!["cancelled", "failed"].includes(e.state) ||
+              hasRemoteActivity(e)),
         )
       )
         throw new Error("相同版本已有任务。请先查看任务记录，避免重复发布。");
@@ -90,6 +99,40 @@ export async function enqueue(
     await changed(database);
   });
   return tasks;
+}
+export async function claimTask(
+  id: string,
+  owner: string,
+  database: WorkbenchDB = db,
+) {
+  return database.transaction("rw", database.tasks, database.meta, async () => {
+    const task = await database.tasks.get(id);
+    if (!task || !canStart(task)) return undefined;
+    const claimed: Task = {
+      ...task,
+      state: "preparing",
+      owner,
+      updatedAt: Date.now(),
+    };
+    await database.tasks.put(claimed);
+    await changed(database);
+    return claimed;
+  });
+}
+export async function cancelTask(id: string, database: WorkbenchDB = db) {
+  await database.transaction("rw", database.tasks, database.meta, async () => {
+    const task = await database.tasks.get(id);
+    if (!task || !canStart(task))
+      throw new Error(
+        "任务已开始执行或需要核实原站结果，不能取消。请刷新队列。",
+      );
+    await patchTask(
+      id,
+      { state: "cancelled", step: "用户取消待执行任务" },
+      "用户取消待执行任务",
+      database,
+    );
+  });
 }
 export async function patchTask(
   id: string,
