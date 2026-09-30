@@ -38,7 +38,12 @@ export async function addAsset(
     database.meta,
     async () => {
       const existing = await database.assets.get(asset.id);
-      if (existing) return existing;
+      if (existing) {
+        await database.assets.update(asset.id, {
+          protectedUntil: Date.now() + 86_400_000,
+        });
+        return existing;
+      }
       await database.assets.add(asset);
       await changed(database);
       return asset;

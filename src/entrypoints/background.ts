@@ -92,45 +92,47 @@ export default defineBackground(() => {
     task: Task,
     receipt: Awaited<ReturnType<ReturnType<typeof adapterFor>["verify"]>>,
   ) {
-    await patchTask(
-      task.id,
-      {
-        state: receipt.status,
-        remoteUrl: receipt.url ?? task.remoteUrl,
-        remoteId: receipt.remoteId ?? task.remoteId,
-        editorUrl: receipt.editorUrl ?? task.editorUrl,
-        error: receipt.status === "uncertain" ? receipt.detail : undefined,
-        step: receipt.detail,
-      },
-      receipt.detail,
-    );
-    if (
-      receipt.remoteId &&
-      ["draft_saved", "published", "reviewing", "submitted"].includes(
-        receipt.status,
-      )
-    ) {
-      const previous = await db.posts
-        .where("[channel+remoteId]")
-        .equals([task.channel, receipt.remoteId])
-        .first();
-      const now = Date.now();
-      await db.posts.put({
-        id: previous?.id ?? uid(),
-        articleId: task.snapshot.articleId,
-        channel: task.channel,
-        remoteId: receipt.remoteId,
-        url: receipt.url ?? receipt.editorUrl ?? task.editorUrl ?? "",
-        editorUrl: receipt.editorUrl,
-        title: task.snapshot.title,
-        status: receipt.status as
-          "published" | "draft_saved" | "submitted" | "reviewing",
-        snapshot: task.snapshot,
-        registeredAt: previous?.registeredAt ?? now,
-        updatedAt: now,
-      });
-      await changed();
-    }
+    await db.transaction("rw", db.tasks, db.posts, db.meta, async () => {
+      await patchTask(
+        task.id,
+        {
+          state: receipt.status,
+          remoteUrl: receipt.url ?? task.remoteUrl,
+          remoteId: receipt.remoteId ?? task.remoteId,
+          editorUrl: receipt.editorUrl ?? task.editorUrl,
+          error: receipt.status === "uncertain" ? receipt.detail : undefined,
+          step: receipt.detail,
+        },
+        receipt.detail,
+      );
+      if (
+        receipt.remoteId &&
+        ["draft_saved", "published", "reviewing", "submitted"].includes(
+          receipt.status,
+        )
+      ) {
+        const previous = await db.posts
+          .where("[channel+remoteId]")
+          .equals([task.channel, receipt.remoteId])
+          .first();
+        const now = Date.now();
+        await db.posts.put({
+          id: previous?.id ?? uid(),
+          articleId: task.snapshot.articleId,
+          channel: task.channel,
+          remoteId: receipt.remoteId,
+          url: receipt.url ?? receipt.editorUrl ?? task.editorUrl ?? "",
+          editorUrl: receipt.editorUrl,
+          title: task.snapshot.title,
+          status: receipt.status as
+            "published" | "draft_saved" | "submitted" | "reviewing",
+          snapshot: task.snapshot,
+          registeredAt: previous?.registeredAt ?? now,
+          updatedAt: now,
+        });
+        await changed();
+      }
+    });
   }
   async function run(ids: string[]) {
     if (running) throw new Error("已有发布队列正在执行");

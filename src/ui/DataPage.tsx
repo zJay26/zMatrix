@@ -3,7 +3,8 @@ import { useLiveQuery } from "dexie-react-hooks";
 import { Plus, RefreshCw, ExternalLink, CheckCheck } from "lucide-react";
 import { db, changed } from "../core/db";
 import { channels, platformNames } from "../platforms/catalog";
-import { registerPost } from "../core/collection";
+import { registerPost, updateRegistration } from "../core/collection";
+import { removePosts } from "../core/cleanup";
 import { platformIds, messageOf, type ChannelId } from "../core/model";
 import {
   Alert,
@@ -12,8 +13,11 @@ import {
   PlatformPill,
   command,
   timeLabel,
+  ActionMenu,
+  ConfirmDialog,
 } from "./shared";
-export function DataPage({ commentsMode = false }: { commentsMode?: boolean }) {
+export function DataPage() {
+  const [commentsMode, setCommentsMode] = useState(false);
   const posts = useLiveQuery(
     () => db.posts.orderBy("updatedAt").reverse().toArray(),
     [],
@@ -32,6 +36,9 @@ export function DataPage({ commentsMode = false }: { commentsMode?: boolean }) {
   const [articleFilter, setArticleFilter] = useState("all");
   const [unread, setUnread] = useState(false);
   const [showRegister, setShowRegister] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [deletion, setDeletion] = useState<string[] | null>(null);
+  const [selectedPosts, setSelectedPosts] = useState<string[]>([]);
   const [url, setUrl] = useState("");
   const [title, setTitle] = useState("");
   const [channel, setChannel] = useState<ChannelId>("zhihu:article");
@@ -60,7 +67,10 @@ export function DataPage({ commentsMode = false }: { commentsMode?: boolean }) {
     setError("");
     try {
       if (!title.trim()) throw new Error("请填写文章标题");
-      await registerPost(url, title.trim(), channel, articleId || undefined);
+      if (editingId)
+        await updateRegistration(editingId, title, articleId || undefined);
+      else
+        await registerPost(url, title.trim(), channel, articleId || undefined);
       setShowRegister(false);
       setUrl("");
       setTitle("");
@@ -82,19 +92,75 @@ export function DataPage({ commentsMode = false }: { commentsMode?: boolean }) {
     <div className="page">
       <div className="page-heading">
         <div>
-          <h1>{commentsMode ? "评论收件箱" : "文章数据"}</h1>
+          <h1>数据与互动</h1>
         </div>
         <div className="button-row">
           <button disabled={!!refreshing?.value} onClick={() => void refresh()}>
             <RefreshCw size={16} className={refreshing?.value ? "spin" : ""} />
             {refreshing?.value ? "正在刷新" : "刷新数据与评论"}
           </button>
-          <button className="primary" onClick={() => setShowRegister(true)}>
+          <button
+            className="primary"
+            onClick={() => {
+              setEditingId(null);
+              setUrl("");
+              setTitle("");
+              setArticleId("");
+              setShowRegister(true);
+            }}
+          >
             <Plus size={17} />
             登记文章
           </button>
         </div>
       </div>
+      <div className="tabs data-tabs" aria-label="数据与互动视图">
+        <button
+          className={!commentsMode ? "active" : ""}
+          aria-pressed={!commentsMode}
+          onClick={() => setCommentsMode(false)}
+        >
+          文章数据
+        </button>
+        <button
+          className={commentsMode ? "active" : ""}
+          aria-pressed={commentsMode}
+          onClick={() => setCommentsMode(true)}
+        >
+          评论 <span>{comments.filter((c) => !c.readAt).length} 未读</span>
+        </button>
+      </div>
+      {!commentsMode && !!visiblePosts.length && (
+        <div className="selection-bar">
+          <label>
+            <input
+              type="checkbox"
+              aria-label="选择当前文章登记"
+              checked={visiblePosts.every((p) => selectedPosts.includes(p.id))}
+              onChange={(e) =>
+                setSelectedPosts(
+                  e.target.checked ? visiblePosts.map((p) => p.id) : [],
+                )
+              }
+            />
+            选择当前结果
+          </label>
+          {visiblePosts.some((p) => selectedPosts.includes(p.id)) && (
+            <button
+              className="danger-text"
+              onClick={() =>
+                setDeletion(
+                  visiblePosts
+                    .filter((p) => selectedPosts.includes(p.id))
+                    .map((p) => p.id),
+                )
+              }
+            >
+              删除所选登记
+            </button>
+          )}
+        </div>
+      )}
       {error && <Alert>{error}</Alert>}
       <div className="filter-bar">
         <select
@@ -224,6 +290,18 @@ export function DataPage({ commentsMode = false }: { commentsMode?: boolean }) {
             return (
               <article key={post.id} className="metrics-card">
                 <header>
+                  <input
+                    type="checkbox"
+                    aria-label={`选择登记 ${post.title}`}
+                    checked={selectedPosts.includes(post.id)}
+                    onChange={(e) =>
+                      setSelectedPosts(
+                        e.target.checked
+                          ? [...selectedPosts, post.id]
+                          : selectedPosts.filter((id) => id !== post.id),
+                      )
+                    }
+                  />
                   <PlatformPill id={post.channel} />
                   <a href={post.url} target="_blank" rel="noreferrer">
                     {post.title}
@@ -235,6 +313,26 @@ export function DataPage({ commentsMode = false }: { commentsMode?: boolean }) {
                   >
                     <RefreshCw size={15} />
                   </button>
+                  <ActionMenu label={`管理登记 ${post.title}`}>
+                    <button
+                      onClick={() => {
+                        setEditingId(post.id);
+                        setTitle(post.title);
+                        setUrl(post.url);
+                        setChannel(post.channel);
+                        setArticleId(post.articleId ?? "");
+                        setShowRegister(true);
+                      }}
+                    >
+                      修改标题与关联
+                    </button>
+                    <button
+                      className="danger-text"
+                      onClick={() => setDeletion([post.id])}
+                    >
+                      删除本地登记
+                    </button>
+                  </ActionMenu>
                 </header>
                 <div className="metrics-values">
                   {data?.values.length ? (
@@ -267,12 +365,16 @@ export function DataPage({ commentsMode = false }: { commentsMode?: boolean }) {
         </div>
       )}
       {showRegister && (
-        <Modal title="登记已有文章" onClose={() => setShowRegister(false)}>
+        <Modal
+          title={editingId ? "修改文章登记" : "登记已有文章"}
+          onClose={() => setShowRegister(false)}
+        >
           <div className="form-stack">
             <label>
               平台
               <select
                 value={channel}
+                disabled={!!editingId}
                 onChange={(e) => setChannel(e.target.value as ChannelId)}
               >
                 {channels.map((c) => (
@@ -294,6 +396,7 @@ export function DataPage({ commentsMode = false }: { commentsMode?: boolean }) {
               原站文章链接
               <input
                 type="url"
+                disabled={!!editingId}
                 value={url}
                 onChange={(e) => setUrl(e.target.value)}
                 placeholder="https://…"
@@ -306,11 +409,13 @@ export function DataPage({ commentsMode = false }: { commentsMode?: boolean }) {
                 onChange={(e) => setArticleId(e.target.value)}
               >
                 <option value="">不关联母稿</option>
-                {articles.map((a) => (
-                  <option value={a.id} key={a.id}>
-                    {a.title || "未命名稿件"}
-                  </option>
-                ))}
+                {articles
+                  .filter((a) => !a.trashedAt)
+                  .map((a) => (
+                    <option value={a.id} key={a.id}>
+                      {a.title || "未命名稿件"}
+                    </option>
+                  ))}
               </select>
             </label>
             {error && <Alert>{error}</Alert>}
@@ -322,10 +427,26 @@ export function DataPage({ commentsMode = false }: { commentsMode?: boolean }) {
               disabled={busy}
               onClick={() => void register()}
             >
-              登记文章
+              {editingId ? "保存修改" : "登记文章"}
             </button>
           </footer>
         </Modal>
+      )}
+      {deletion && (
+        <ConfirmDialog
+          title={`删除 ${deletion.length} 条本地登记？`}
+          confirmLabel="删除登记"
+          onClose={() => setDeletion(null)}
+          onConfirm={async () => {
+            await removePosts(deletion);
+            setSelectedPosts([]);
+            setArticleFilter("all");
+          }}
+        >
+          <p>
+            将停止跟踪，并清除这些文章在工具内的指标和评论缓存。原站文章、原站评论和本地稿件不会删除。
+          </p>
+        </ConfirmDialog>
       )}
     </div>
   );

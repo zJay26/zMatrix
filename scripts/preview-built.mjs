@@ -1,7 +1,11 @@
 import { createServer } from "node:http";
 import { readFile } from "node:fs/promises";
 import { resolve, sep, extname } from "node:path";
-const root = resolve(import.meta.dirname, "../.output/edge-mv3");
+const root = resolve(
+  import.meta.dirname,
+  "..",
+  process.argv[2] ?? ".output/edge-mv3",
+);
 const port = Number(process.env.PORT ?? 4173);
 if (!Number.isInteger(port) || port < 1 || port > 65535)
   throw new Error("PORT must be an integer between 1 and 65535");

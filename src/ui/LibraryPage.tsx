@@ -21,6 +21,8 @@ import {
   Plus,
   Search,
   X,
+  Trash2,
+  RotateCcw,
 } from "lucide-react";
 import { db } from "../core/db";
 import {
@@ -33,7 +35,15 @@ import {
 import { downloadBlob } from "../core/assets";
 import { messageOf, type Article } from "../core/model";
 import { channels } from "../platforms/catalog";
-import { Alert, Empty, PlatformPill, timeLabel } from "./shared";
+import {
+  Alert,
+  Empty,
+  PlatformPill,
+  timeLabel,
+  ActionMenu,
+  ConfirmDialog,
+} from "./shared";
+import { trashArticles, restoreArticles, purgeArticles } from "../core/cleanup";
 
 const defaults: LibraryFilter = {
   query: "",
@@ -85,6 +95,10 @@ export function LibraryPage({
   const deferredQuery = useDeferredValue(filter.query);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
+  const [deletion, setDeletion] = useState<{
+    ids: string[];
+    permanent: boolean;
+  } | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [undo, setUndo] = useState<{ ids: string[]; archived: boolean } | null>(
@@ -116,7 +130,13 @@ export function LibraryPage({
     .map((e) => e.article.id);
   const allVisibleSelected =
     !!visible.length && visible.every((e) => selected.has(e.article.id));
-  const active = entries.filter((e) => !e.article.archived);
+  const active = entries.filter(
+    (e) => !e.article.archived && !e.article.trashedAt,
+  );
+  const trashed = entries.filter((e) => !!e.article.trashedAt);
+  const archived = entries.filter(
+    (e) => e.article.archived && !e.article.trashedAt,
+  );
   const published = active.filter((e) =>
     e.posts.some((p) => p.status === "published"),
   ).length;
@@ -190,7 +210,7 @@ export function LibraryPage({
           </button>
         </div>
       </div>
-      <div className="library-summary" aria-label="内容概览">
+      <div className="library-counts" aria-label="内容概览">
         <span>
           <strong>{active.length}</strong> 篇稿件
         </span>
@@ -233,18 +253,25 @@ export function LibraryPage({
       <div className="library-toolbar">
         <div className="tabs" aria-label="稿件范围">
           <button
-            aria-pressed={!filter.archived}
-            className={!filter.archived ? "active" : ""}
-            onClick={() => updateFilter({ archived: false })}
+            aria-pressed={!filter.archived && !filter.trashed}
+            className={!filter.archived && !filter.trashed ? "active" : ""}
+            onClick={() => updateFilter({ archived: false, trashed: false })}
           >
-            全部稿件 <span>{active.length}</span>
+            稿件 <span>{active.length}</span>
           </button>
           <button
-            aria-pressed={filter.archived}
-            className={filter.archived ? "active" : ""}
-            onClick={() => updateFilter({ archived: true })}
+            aria-pressed={filter.archived && !filter.trashed}
+            className={filter.archived && !filter.trashed ? "active" : ""}
+            onClick={() => updateFilter({ archived: true, trashed: false })}
           >
-            已归档 <span>{entries.length - active.length}</span>
+            已归档 <span>{archived.length}</span>
+          </button>
+          <button
+            aria-pressed={!!filter.trashed}
+            className={filter.trashed ? "active" : ""}
+            onClick={() => updateFilter({ trashed: true, archived: false })}
+          >
+            回收站 <span>{trashed.length}</span>
           </button>
         </div>
         <label className="search-box">
@@ -342,16 +369,53 @@ export function LibraryPage({
           {!!selectedIds.length && (
             <>
               <span className="muted">已选 {selectedIds.length} 篇</span>
+              {selectedIds.length < filtered.length && (
+                <button
+                  className="text-button"
+                  onClick={() =>
+                    setSelected(new Set(filtered.map((e) => e.article.id)))
+                  }
+                >
+                  选择全部结果（{filtered.length} 篇）
+                </button>
+              )}
               <button disabled={busy} onClick={exportSelected}>
                 <Download size={15} />
                 导出所选
               </button>
+              {!filter.trashed && (
+                <button
+                  disabled={busy}
+                  onClick={() => archive(selectedIds, !filter.archived)}
+                >
+                  <Archive size={15} />
+                  {filter.archived ? "取消归档" : "归档所选"}
+                </button>
+              )}
+              {filter.trashed && (
+                <button
+                  disabled={busy}
+                  onClick={() =>
+                    void act(async () => {
+                      await restoreArticles(selectedIds);
+                      setSelected(new Set());
+                      setNotice("所选稿件已恢复。");
+                    })
+                  }
+                >
+                  <RotateCcw size={15} />
+                  恢复所选
+                </button>
+              )}
               <button
+                className="danger-text"
                 disabled={busy}
-                onClick={() => archive(selectedIds, !filter.archived)}
+                onClick={() =>
+                  setDeletion({ ids: selectedIds, permanent: !!filter.trashed })
+                }
               >
-                <Archive size={15} />
-                {filter.archived ? "取消归档" : "归档所选"}
+                <Trash2 size={15} />
+                {filter.trashed ? "彻底删除所选" : "删除所选"}
               </button>
               <button
                 className="text-button"
@@ -397,7 +461,9 @@ export function LibraryPage({
           }
         >
           {entries.length
-            ? "可以调整关键词或筛选条件。归档的稿件仍保留所有版本和素材。"
+            ? filter.trashed
+              ? "删除的稿件会保留在这里，直到你选择彻底删除。"
+              : "可以调整关键词或筛选条件，或查看归档与回收站。"
             : "导入已有 Markdown，或在这里开始写作。每个平台都能保留自己的标题、正文与配图。"}
         </Empty>
       ) : (
@@ -434,37 +500,79 @@ export function LibraryPage({
                   <FileText size={20} />
                   <span>母稿 · v{article.revision}</span>
                   <div className="article-card-actions">
+                    {article.trashedAt ? (
+                      <button
+                        className="icon-button"
+                        disabled={busy}
+                        title="恢复稿件"
+                        aria-label={`恢复 ${article.title || "未命名稿件"}`}
+                        onClick={() =>
+                          void act(async () => {
+                            await restoreArticles([article.id]);
+                            setNotice("稿件已恢复。");
+                          })
+                        }
+                      >
+                        <RotateCcw size={15} />
+                      </button>
+                    ) : (
+                      <ActionMenu
+                        label={`更多 ${article.title || "未命名稿件"}`}
+                      >
+                        <button
+                          className="icon-button"
+                          disabled={busy}
+                          title="复制母稿与平台版本"
+                          aria-label={`复制 ${article.title || "未命名稿件"}`}
+                          onClick={() =>
+                            void act(async () =>
+                              onOpen(await duplicateArticle(article.id)),
+                            )
+                          }
+                        >
+                          <Copy size={15} />
+                          复制稿件
+                        </button>
+                        <button
+                          className="icon-button"
+                          disabled={busy}
+                          title={article.archived ? "取消归档" : "归档稿件"}
+                          aria-label={`${article.archived ? "取消归档" : "归档"} ${article.title || "未命名稿件"}`}
+                          onClick={() =>
+                            archive([article.id], !article.archived)
+                          }
+                        >
+                          {article.archived ? (
+                            <ArchiveRestore size={15} />
+                          ) : (
+                            <Archive size={15} />
+                          )}
+                          {article.archived ? "取消归档" : "归档稿件"}
+                        </button>
+                      </ActionMenu>
+                    )}
                     <button
-                      className="icon-button"
+                      className="icon-button danger-text"
                       disabled={busy}
-                      title="复制母稿与平台版本"
-                      aria-label={`复制 ${article.title || "未命名稿件"}`}
+                      title={article.trashedAt ? "彻底删除" : "删除稿件"}
+                      aria-label={`${article.trashedAt ? "彻底删除" : "删除"} ${article.title || "未命名稿件"}`}
                       onClick={() =>
-                        void act(async () =>
-                          onOpen(await duplicateArticle(article.id)),
-                        )
+                        setDeletion({
+                          ids: [article.id],
+                          permanent: !!article.trashedAt,
+                        })
                       }
                     >
-                      <Copy size={15} />
-                    </button>
-                    <button
-                      className="icon-button"
-                      disabled={busy}
-                      title={article.archived ? "取消归档" : "归档稿件"}
-                      aria-label={`${article.archived ? "取消归档" : "归档"} ${article.title || "未命名稿件"}`}
-                      onClick={() => archive([article.id], !article.archived)}
-                    >
-                      {article.archived ? (
-                        <ArchiveRestore size={15} />
-                      ) : (
-                        <Archive size={15} />
-                      )}
+                      <Trash2 size={15} />
                     </button>
                   </div>
                 </div>
                 <button
                   className="article-link"
-                  onClick={() => onOpen(article)}
+                  onClick={() => {
+                    if (!article.trashedAt) onOpen(article);
+                  }}
+                  disabled={!!article.trashedAt}
                 >
                   <h2>{article.title || "未命名稿件"}</h2>
                   <p>
@@ -517,6 +625,34 @@ export function LibraryPage({
             下一页
           </button>
         </nav>
+      )}
+      {deletion && (
+        <ConfirmDialog
+          title={
+            deletion.permanent
+              ? `彻底删除 ${deletion.ids.length} 篇稿件？`
+              : `删除 ${deletion.ids.length} 篇稿件？`
+          }
+          confirmLabel={deletion.permanent ? "彻底删除" : "移入回收站"}
+          onClose={() => setDeletion(null)}
+          onConfirm={async () => {
+            if (deletion.permanent) await purgeArticles(deletion.ids);
+            else await trashArticles(deletion.ids);
+            setSelected(new Set());
+            setUndo(null);
+            setNotice(
+              deletion.permanent
+                ? "稿件已彻底删除，原站文章和独立发布登记仍保留。"
+                : "稿件已移入回收站，可随时恢复。未开始的关联任务已取消。",
+            );
+          }}
+        >
+          <p>
+            {deletion.permanent
+              ? "母稿和平台版本将永久删除，无法撤销。原站文章不受影响；仍被其他稿件或发布记录使用的图片会保留。"
+              : "稿件和平台版本会保留在回收站，未开始的关联任务会取消。执行中或结果待核实的任务需先处理。"}
+          </p>
+        </ConfirmDialog>
       )}
       <input
         hidden

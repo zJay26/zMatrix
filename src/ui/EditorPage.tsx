@@ -11,6 +11,8 @@ import {
   GitCompareArrows,
   Download,
   Save,
+  Plus,
+  Trash2,
 } from "lucide-react";
 import { diffLines } from "diff";
 import { db, changed, saveArticle, saveVariant } from "../core/db";
@@ -36,7 +38,15 @@ import type {
 } from "../core/model";
 import { messageOf } from "../core/model";
 import { MarkdownEditor, MarkdownPreview } from "./Markdown";
-import { Modal, Alert, PlatformPill, useBlobUrl } from "./shared";
+import {
+  Modal,
+  Alert,
+  PlatformPill,
+  useBlobUrl,
+  ActionMenu,
+  ConfirmDialog,
+} from "./shared";
+import { removeVariant } from "../core/cleanup";
 import { CardStudio } from "./CardStudio";
 import { PublishDialog } from "./PublishDialog";
 import { MetadataFields, type MetadataHandle } from "./MetadataFields";
@@ -78,6 +88,7 @@ export function EditorPage({
   onFlushReady,
   onOpenCopy,
   defaultViewMode = "split",
+  isNew = false,
 }: {
   initial: Article;
   onBack: () => void;
@@ -85,6 +96,7 @@ export function EditorPage({
   onFlushReady: (flush: () => Promise<boolean>) => void;
   onOpenCopy: (article: Article) => void;
   defaultViewMode?: "split" | "source" | "preview";
+  isNew?: boolean;
 }) {
   const [article, setArticle] = useState(initial);
   const articleRef = useRef(article);
@@ -100,7 +112,9 @@ export function EditorPage({
   const localRef = useRef(localVariants);
   const [saveStatus, setSaveStatus] = useState({ pending: false, error: "" });
   const [saveQueue] = useState(() => new SaveQueue(setSaveStatus));
-  const committedArticle = useRef(initial);
+  const committedArticle = useRef<Article | undefined>(
+    isNew ? undefined : initial,
+  );
   const committedVariants = useRef(new Map<string, Variant | undefined>());
   const uploads = useRef(new Set<Promise<void>>());
   const [uploading, setUploading] = useState(false);
@@ -114,6 +128,8 @@ export function EditorPage({
   const [studio, setStudio] = useState(false);
   const [publish, setPublish] = useState(false);
   const [showDiff, setShowDiff] = useState(false);
+  const [addPlatform, setAddPlatform] = useState(false);
+  const [removePlatform, setRemovePlatform] = useState<ChannelId | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
   const metadataEditor = useRef<MetadataHandle>(null);
   const variants = {
@@ -145,6 +161,11 @@ export function EditorPage({
     localRef.current = { ...localRef.current, [next.channel]: next };
     setLocalVariants(localRef.current);
     saveQueue.enqueue(next.id, async () => {
+      if (!committedArticle.current) {
+        const first = articleRef.current;
+        await saveArticle(first, db, { expected: undefined });
+        committedArticle.current = first;
+      }
       await saveVariant(next, db, {
         expected: committedVariants.current.get(next.channel),
       });
@@ -283,19 +304,32 @@ export function EditorPage({
             ? "尚有未保存的编辑"
             : saveStatus.pending || uploading
               ? "正在保存…"
-              : "本地已保存"}
+              : committedArticle.current
+                ? "本地已保存"
+                : "开始编辑后自动保存"}
         </span>
-        <button
-          disabled={exporting || uploading}
-          onClick={() => void exportContent()}
-        >
-          <Download size={16} />
-          导出当前版本
-        </button>
-        <button onClick={() => setStudio(true)}>
-          <Images size={17} />
-          制作图文
-        </button>
+        <ActionMenu label="稿件工具">
+          <button
+            disabled={exporting || uploading}
+            onClick={() => void exportContent()}
+          >
+            <Download size={16} />
+            导出当前版本
+          </button>
+          <button onClick={() => setStudio(true)}>
+            <Images size={17} />
+            制作图文
+          </button>
+          {variant && (
+            <button
+              className="danger-text"
+              onClick={() => setRemovePlatform(variant.channel)}
+            >
+              <Trash2 size={16} />
+              移除此平台版本
+            </button>
+          )}
+        </ActionMenu>
         <button
           className="primary"
           onClick={() => void switchPage(() => setPublish(true))}
@@ -307,33 +341,46 @@ export function EditorPage({
       <div className="version-strip" aria-label="稿件版本">
         <button
           className={selected === "master" ? "active master-tab" : "master-tab"}
-          onClick={() => {
-            setSelection("");
-            setSelected("master");
-          }}
+          onClick={() =>
+            void switchPage(() => {
+              setSelection("");
+              setSelected("master");
+            })
+          }
           disabled={uploading}
         >
           母稿
         </button>
-        {channels.map((c) => (
-          <button
-            key={c.id}
-            className={selected === c.id ? "active" : ""}
-            onClick={() => {
-              setSelection("");
-              setSelected(c.id);
-            }}
-            disabled={!storedQuery || uploading}
-          >
-            <i style={{ background: c.color }} />
-            {c.short}
-            <small>
-              {Object.keys(variants[c.id]?.overrides ?? {}).length
-                ? "独立编辑"
-                : "跟随母稿"}
-            </small>
-          </button>
-        ))}
+        {channels
+          .filter((c) => variants[c.id] || selected === c.id)
+          .map((c) => (
+            <button
+              key={c.id}
+              className={selected === c.id ? "active" : ""}
+              onClick={() =>
+                void switchPage(() => {
+                  setSelection("");
+                  setSelected(c.id);
+                })
+              }
+              disabled={!storedQuery || uploading}
+            >
+              <i style={{ background: c.color }} />
+              {c.short}
+              <small>
+                {Object.keys(variants[c.id]?.overrides ?? {}).length
+                  ? "独立编辑"
+                  : "跟随母稿"}
+              </small>
+            </button>
+          ))}
+        <button
+          disabled={uploading || !storedQuery}
+          onClick={() => setAddPlatform(true)}
+        >
+          <Plus size={16} />
+          添加平台
+        </button>
       </div>
       {error && <Alert>{error}</Alert>}
       {notice && (
@@ -417,17 +464,22 @@ export function EditorPage({
         )}
       </div>
       {variant && (
-        <MetadataFields
-          key={variant.channel}
-          ref={metadataEditor}
-          channel={variant.channel}
-          metadata={variant.metadata}
-          markdown={content.markdown}
-          onChange={(update) => {
-            const current = currentVariant(variant.channel);
-            putVariant({ ...current, metadata: update(current.metadata) });
-          }}
-        />
+        <details className="editor-metadata disclosure">
+          <summary>
+            平台设置 <span className="muted">分类、标签与摘要</span>
+          </summary>
+          <MetadataFields
+            key={variant.channel}
+            ref={metadataEditor}
+            channel={variant.channel}
+            metadata={variant.metadata}
+            markdown={content.markdown}
+            onChange={(update) => {
+              const current = currentVariant(variant.channel);
+              putVariant({ ...current, metadata: update(current.metadata) });
+            }}
+          />
+        </details>
       )}
       {selected === "linuxdo:topic" && (
         <div className="manual-tools">
@@ -580,8 +632,10 @@ export function EditorPage({
         </div>
       </section>
       {!!posts.length && (
-        <section className="publication-list">
-          <h3>发布记录与版本</h3>
+        <details className="publication-list disclosure">
+          <summary>
+            发布记录与版本 <span className="muted">{posts.length} 条</span>
+          </summary>
           {posts.map((post) => {
             const current = variants[post.channel];
             const behind =
@@ -627,7 +681,7 @@ export function EditorPage({
               </div>
             );
           })}
-        </section>
+        </details>
       )}
       {studio && (
         <CardStudio
@@ -662,9 +716,66 @@ export function EditorPage({
       {publish && (
         <PublishDialog
           article={article}
+          variants={variants}
+          onVariantChange={(id, update) =>
+            putVariant(update(currentVariant(id)))
+          }
+          onFlush={flush}
+          onEditPlatform={(id) => {
+            setPublish(false);
+            setSelected(id);
+          }}
           onClose={() => setPublish(false)}
           onCreated={onQueue}
         />
+      )}
+      {addPlatform && (
+        <Modal title="添加平台版本" onClose={() => setAddPlatform(false)}>
+          <div className="platform-picker">
+            {channels
+              .filter((c) => !variants[c.id])
+              .map((c) => (
+                <button
+                  key={c.id}
+                  onClick={() =>
+                    void switchPage(() => {
+                      putVariant(currentVariant(c.id));
+                      setSelected(c.id);
+                      setAddPlatform(false);
+                    })
+                  }
+                >
+                  <PlatformPill id={c.id} />
+                  <span>{c.manual ? "人工发布辅助" : "从母稿开始"}</span>
+                </button>
+              ))}
+          </div>
+          {channels.every((c) => variants[c.id]) && <p>已添加全部平台。</p>}
+        </Modal>
+      )}
+      {removePlatform && (
+        <ConfirmDialog
+          title="移除此平台版本？"
+          confirmLabel="移除版本"
+          onClose={() => setRemovePlatform(null)}
+          onConfirm={async () => {
+            if (!(await flush())) throw new Error("请先处理未保存的编辑。");
+            const expected =
+              committedVariants.current.get(removePlatform) ??
+              stored.find((v) => v.channel === removePlatform);
+            if (expected) await removeVariant(expected);
+            const next = { ...localRef.current };
+            delete next[removePlatform];
+            localRef.current = next;
+            setLocalVariants(next);
+            committedVariants.current.delete(removePlatform);
+            setSelected("master");
+          }}
+        >
+          <p>
+            将清除这一平台的独立内容和发布设置。母稿与原站内容保留，之后可以重新添加平台。
+          </p>
+        </ConfirmDialog>
       )}
       {showDiff && variant && (
         <Modal

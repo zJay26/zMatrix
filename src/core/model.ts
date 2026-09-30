@@ -30,6 +30,7 @@ export interface Article extends Content {
   createdAt: number;
   updatedAt: number;
   archived: boolean;
+  trashedAt?: number;
 }
 export interface Metadata {
   tags: string[];
@@ -52,6 +53,7 @@ export interface Asset {
   type: string;
   blob: Blob;
   createdAt: number;
+  protectedUntil?: number;
 }
 export interface Snapshot extends Content {
   articleId: string;
@@ -110,6 +112,14 @@ export interface Task {
   owner?: string;
   account?: string;
   events: { at: number; message: string }[];
+}
+// Small durable receipt: clearing task history must not enable duplicate publishing.
+export interface TaskReceipt {
+  id: string;
+  channel: ChannelId;
+  mode: Mode;
+  fingerprint: string;
+  recordedAt: number;
 }
 export interface RemotePost {
   id: string;

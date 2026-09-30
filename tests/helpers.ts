@@ -9,10 +9,14 @@ export const content: PreparedContent = {
   assets: [],
   warnings: [],
 };
-export async function fixture(channel: ChannelId = "csdn:article") {
+export async function fixture(
+  channel: ChannelId = "csdn:article",
+  store?: WorkbenchDB,
+) {
   const article = newArticle("本地验收稿", "正文");
   const variant = newVariant(article, channel);
   variant.metadata.tags = ["技术"];
+  if (store) await store.articles.put(article);
   return {
     article,
     variant,

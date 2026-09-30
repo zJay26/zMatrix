@@ -24,7 +24,9 @@ afterEach(() => db.delete());
 
 describe("多窗口保存与导入完整性", () => {
   it("两个窗口首次创建同一平台版本时，后写入者不能覆盖先保存的内容", async () => {
-    const variant = newVariant(newArticle(), "zhihu:article");
+    const article = newArticle();
+    await db.articles.add(article);
+    const variant = newVariant(article, "zhihu:article");
     await saveVariant(setOverride(variant, "title", "先写入"), db, {
       expected: undefined,
     });
@@ -59,7 +61,9 @@ describe("多窗口保存与导入完整性", () => {
   });
 
   it("平台版本也拒绝基于过期内容的覆盖", async () => {
-    const base = newVariant(newArticle(), "csdn:article");
+    const article = newArticle();
+    await db.articles.add(article);
+    const base = newVariant(article, "csdn:article");
     await saveVariant(base, db);
     await saveVariant(setOverride(base, "title", "其他窗口的标题"), db);
     await expect(

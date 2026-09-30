@@ -6,6 +6,7 @@ import {
   type Snapshot,
   type Task,
   type TaskState,
+  type TaskReceipt,
 } from "./model";
 
 export const stateNames: Record<TaskState, string> = {
@@ -45,6 +46,42 @@ export function canStart(task: Task) {
     !hasRemoteActivity(task)
   );
 }
+export function canRemoveTask(task: Task) {
+  return (
+    canStart(task) ||
+    ["draft_saved", "published"].includes(task.state) ||
+    (task.state === "cancelled" && !hasRemoteActivity(task))
+  );
+}
+export function taskReceipt(task: Task): TaskReceipt {
+  return {
+    id: `${task.channel}/${task.mode}/${task.snapshot.fingerprint}`,
+    channel: task.channel,
+    mode: task.mode,
+    fingerprint: task.snapshot.fingerprint,
+    recordedAt: Date.now(),
+  };
+}
+export async function removeTasks(ids: string[], database = db) {
+  return database.transaction(
+    "rw",
+    database.tasks,
+    database.taskReceipts,
+    database.meta,
+    async () => {
+      const tasks = await database.tasks.bulkGet([...new Set(ids)]);
+      if (tasks.some((t) => !t || !canRemoveTask(t)))
+        throw new Error("部分任务正在执行或结果待核实，请先处理后再清理。");
+      for (const task of tasks) {
+        if (["draft_saved", "published"].includes(task!.state))
+          await database.taskReceipts.put(taskReceipt(task!));
+      }
+      await database.tasks.bulkDelete(tasks.map((t) => t!.id));
+      await changed(database);
+      return tasks.length;
+    },
+  );
+}
 export function recoverTask(task: Task): Task {
   if (!["preparing", "submitting", "verifying"].includes(task.state))
     return task;
@@ -79,25 +116,39 @@ export async function enqueue(
     updatedAt: now,
     events: [],
   }));
-  await database.transaction("rw", database.tasks, database.meta, async () => {
-    const existing = await database.tasks.toArray();
-    for (const task of tasks) {
-      if (
-        existing.some(
-          (e) =>
-            e.snapshot.fingerprint === task.snapshot.fingerprint &&
-            e.channel === task.channel &&
-            e.mode === task.mode &&
-            (!["cancelled", "failed"].includes(e.state) ||
-              hasRemoteActivity(e)),
+  await database.transaction(
+    "rw",
+    database.tasks,
+    database.taskReceipts,
+    database.articles,
+    database.meta,
+    async () => {
+      const existing = await database.tasks.toArray();
+      for (const task of tasks) {
+        const article = await database.articles.get(task.snapshot.articleId);
+        if (!article || article.trashedAt)
+          throw new Error("稿件已删除或在回收站，请返回内容库。");
+        if (await database.taskReceipts.get(taskReceipt(task).id))
+          throw new Error(
+            "相同版本已有任务完成记录，请核实原站，避免重复发布。",
+          );
+        if (
+          existing.some(
+            (e) =>
+              e.snapshot.fingerprint === task.snapshot.fingerprint &&
+              e.channel === task.channel &&
+              e.mode === task.mode &&
+              (!["cancelled", "failed"].includes(e.state) ||
+                hasRemoteActivity(e)),
+          )
         )
-      )
-        throw new Error("相同版本已有任务。请先查看任务记录，避免重复发布。");
-      existing.push(task);
-    }
-    await database.tasks.bulkAdd(tasks);
-    await changed(database);
-  });
+          throw new Error("相同版本已有任务。请先查看任务记录，避免重复发布。");
+        existing.push(task);
+      }
+      await database.tasks.bulkAdd(tasks);
+      await changed(database);
+    },
+  );
   return tasks;
 }
 export async function claimTask(
@@ -105,19 +156,37 @@ export async function claimTask(
   owner: string,
   database: WorkbenchDB = db,
 ) {
-  return database.transaction("rw", database.tasks, database.meta, async () => {
-    const task = await database.tasks.get(id);
-    if (!task || !canStart(task)) return undefined;
-    const claimed: Task = {
-      ...task,
-      state: "preparing",
-      owner,
-      updatedAt: Date.now(),
-    };
-    await database.tasks.put(claimed);
-    await changed(database);
-    return claimed;
-  });
+  return database.transaction(
+    "rw",
+    database.tasks,
+    database.taskReceipts,
+    database.articles,
+    database.meta,
+    async () => {
+      const task = await database.tasks.get(id);
+      if (!task || !canStart(task)) return undefined;
+      const article = await database.articles.get(task.snapshot.articleId);
+      if (!article || article.trashedAt) return undefined;
+      if (await database.taskReceipts.get(taskReceipt(task).id)) {
+        await database.tasks.update(id, {
+          state: "cancelled",
+          step: "相同版本已有完成记录，已取消重复任务",
+          updatedAt: Date.now(),
+        });
+        await changed(database);
+        return undefined;
+      }
+      const claimed: Task = {
+        ...task,
+        state: "preparing",
+        owner,
+        updatedAt: Date.now(),
+      };
+      await database.tasks.put(claimed);
+      await changed(database);
+      return claimed;
+    },
+  );
 }
 export async function cancelTask(id: string, database: WorkbenchDB = db) {
   await database.transaction("rw", database.tasks, database.meta, async () => {

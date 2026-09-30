@@ -12,7 +12,6 @@ import {
   BookOpenText,
   ListChecks,
   ChartNoAxesCombined,
-  MessageSquareText,
   Settings2,
   Plus,
   ArrowUpRight,
@@ -46,7 +45,7 @@ const DataPage = lazy(() =>
 const SettingsPage = lazy(() =>
   import("./SettingsPage").then((m) => ({ default: m.SettingsPage })),
 );
-type Screen = "library" | "queue" | "metrics" | "comments" | "settings";
+type Screen = "library" | "queue" | "data" | "settings";
 
 export function App() {
   const preferences = useLiveQuery(() => getPreferences());
@@ -69,6 +68,7 @@ export function App() {
   const [screen, setScreen] = useState<Screen>("library");
   const [libraryView, setLibraryView] = useState(defaultLibraryView);
   const [editing, setEditing] = useState<Article | null>(null);
+  const [newDraftId, setNewDraftId] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [backupError, setBackupError] = useState("");
   const [backupRound, setBackupRound] = useState(0);
@@ -154,7 +154,8 @@ export function App() {
         sample ? "用一篇稿件，连接每个平台" : "",
         markdown,
       );
-      await saveArticle(article);
+      if (sample) await saveArticle(article);
+      setNewDraftId(sample ? null : article.id);
       setError("");
       setScreen("library");
       setEditing(article);
@@ -165,8 +166,7 @@ export function App() {
   const nav = [
     { id: "library", name: "内容库", icon: BookOpenText },
     { id: "queue", name: "发布队列", icon: ListChecks },
-    { id: "metrics", name: "文章数据", icon: ChartNoAxesCombined },
-    { id: "comments", name: "评论收件箱", icon: MessageSquareText },
+    { id: "data", name: "数据与互动", icon: ChartNoAxesCombined },
     { id: "settings", name: "设置", icon: Settings2 },
   ] as const;
   const updateAvailable =
@@ -215,7 +215,7 @@ export function App() {
         <nav aria-label="工作台导航">
           {nav.map((item) => {
             const count =
-              item.id === "comments"
+              item.id === "data"
                 ? unreadCount
                 : item.id === "queue"
                   ? queuedCount
@@ -325,6 +325,7 @@ export function App() {
             <EditorPage
               key={editing.id}
               initial={editing}
+              isNew={editing.id === newDraftId}
               defaultViewMode={preferences.editorLayout}
               onFlushReady={onFlushReady}
               onBack={() => setEditing(null)}
@@ -338,15 +339,16 @@ export function App() {
             <LibraryPage
               view={libraryView}
               onViewChange={setLibraryView}
-              onOpen={setEditing}
+              onOpen={(article) => {
+                setNewDraftId(null);
+                setEditing(article);
+              }}
               onCreate={(sample) => void create(sample)}
             />
           ) : screen === "queue" ? (
             <QueuePage />
-          ) : screen === "metrics" ? (
+          ) : screen === "data" ? (
             <DataPage />
-          ) : screen === "comments" ? (
-            <DataPage commentsMode />
           ) : (
             <SettingsPage
               preferences={preferences}

@@ -20,7 +20,9 @@
 </p>
 
 > [!IMPORTANT]
-> **v0.2.1 is a developer preview.** Local editing, variants and backups are implemented. None of the 12 real-platform draft/pre-publication acceptance flows have passed yet; live metrics and comments also remain unverified. You always perform the final publication on the platform yourself. See the [acceptance record](docs/acceptance.md).
+> **v0.3.0 is a developer preview.** Local editing, variants and backups are implemented. None of the 12 real-platform draft/pre-publication acceptance flows have passed yet; live metrics and comments also remain unverified. You always perform the final publication on the platform yourself. See the [acceptance record](docs/acceptance.md).
+
+v0.3.0 adds a draft recycle bin, bulk task cleanup and removal of local article registrations. Add only the platforms you use, complete missing fields in the publishing dialog, and reuse your last platform selection. Metrics and comments share one navigation entry; unused image cleanup is available alongside backups.
 
 ## Your content, in one workspace
 
@@ -46,7 +48,7 @@ Keep a master draft, tailor titles and content for each platform, prepare image 
 | Preferences             | Larger default typography, independent interface/editor font sizes, default views and startup refresh preferences saved locally                                         |
 | Update checks           | Check releases every six hours or manually, choose whether to include previews, and download updates on request; unpacked extensions are replaced and reloaded manually |
 
-v0.2.1 adds category choices, removable tags, summary extraction, field requirement labels and select-all in the publishing preview. CNBlogs filling is restored with a browser request guard; publishing and draft saving both require a click on the original site. The original incident and real-account behavior remain unverified. [Workflow and export guide (Chinese)](docs/workbench.md).
+v0.3.0 adds category choices, removable tags, summary extraction, field requirement labels and select-all in the publishing preview. CNBlogs filling is restored with a browser request guard; publishing and draft saving both require a click on the original site. The original incident and real-account behavior remain unverified. [Workflow and export guide (Chinese)](docs/workbench.md).
 
 <details>
 <summary>See the image-post studio</summary>

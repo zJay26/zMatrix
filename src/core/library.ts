@@ -12,6 +12,7 @@ export type LibrarySort = "updated" | "created" | "title";
 export interface LibraryFilter {
   query: string;
   archived: boolean;
+  trashed?: boolean;
   channel: ChannelId | "all";
   publication: "all" | "published" | "unpublished";
   sort: LibrarySort;
@@ -46,7 +47,8 @@ export function filterLibrary(entries: LibraryEntry[], filter: LibraryFilter) {
     .filter(Boolean);
   return entries
     .filter(({ article, variants, posts }) => {
-      if (article.archived !== filter.archived) return false;
+      if (!!article.trashedAt !== !!filter.trashed) return false;
+      if (!filter.trashed && article.archived !== filter.archived) return false;
       if (
         filter.channel !== "all" &&
         !variants.some((v) => v.channel === filter.channel) &&
@@ -96,6 +98,7 @@ export async function archiveArticles(
       for (const id of new Set(ids)) {
         const article = await database.articles.get(id);
         if (!article) throw new Error("部分稿件已不存在，请刷新内容库后重试。");
+        if (article.trashedAt) throw new Error("请先从回收站恢复稿件。");
         // Archiving is organization, not a new content revision.
         await database.articles.update(id, { archived, updatedAt: Date.now() });
       }
@@ -146,6 +149,7 @@ export async function duplicateArticle(id: string, database: WorkbenchDB = db) {
     async () => {
       const article = await database.articles.get(id);
       if (!article) throw new Error("稿件已不存在，请刷新内容库。");
+      if (article.trashedAt) throw new Error("请先从回收站恢复稿件。");
       return copyDraft(
         article,
         await database.variants.where("articleId").equals(id).toArray(),

@@ -9,6 +9,7 @@ import type {
   Probe,
   RemotePost,
   Task,
+  TaskReceipt,
   Variant,
 } from "./model";
 
@@ -17,6 +18,7 @@ export class WorkbenchDB extends Dexie {
   variants!: Table<Variant>;
   assets!: Table<Asset>;
   tasks!: Table<Task>;
+  taskReceipts!: Table<TaskReceipt>;
   posts!: Table<RemotePost>;
   metrics!: Table<Metrics>;
   comments!: Table<Comment>;
@@ -37,6 +39,9 @@ export class WorkbenchDB extends Dexie {
       commentSync: "postId",
       meta: "key",
       probes: "channel",
+    });
+    this.version(2).stores({
+      taskReceipts: "id",
     });
   }
 }
@@ -71,6 +76,8 @@ export async function saveArticle(
     database.meta,
     async () => {
       const previous = await database.articles.get(article.id);
+      if (previous?.trashedAt)
+        throw new Error("稿件已在回收站，请先恢复后再编辑。");
       checkExpected(previous, guard);
       if (
         previous &&
@@ -92,8 +99,12 @@ export async function saveVariant(
   await database.transaction(
     "rw",
     database.variants,
+    database.articles,
     database.meta,
     async () => {
+      const article = await database.articles.get(variant.articleId);
+      if (!article || article.trashedAt)
+        throw new Error("稿件已删除或在回收站，请返回内容库。");
       checkExpected(await database.variants.get(variant.id), guard);
       await database.variants.put(variant);
       await changed(database);

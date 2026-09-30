@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { X, AlertCircle } from "lucide-react";
+import { X, AlertCircle, MoreHorizontal } from "lucide-react";
+import { messageOf } from "../core/model";
 import type { ChannelId } from "../core/model";
 import { channelFor } from "../platforms/catalog";
 import { isExtension } from "../platforms/browser-adapter";
@@ -134,6 +135,96 @@ export function useBlobUrl(blob?: Blob) {
     return () => URL.revokeObjectURL(value);
   }, [blob]);
   return url;
+}
+export function ActionMenu({
+  children,
+  label = "更多操作",
+}: {
+  children: ReactNode;
+  label?: string;
+}) {
+  const menu = useRef<HTMLDetailsElement>(null);
+  useEffect(() => {
+    const close = (event: PointerEvent) => {
+      if (menu.current && !menu.current.contains(event.target as Node))
+        menu.current.open = false;
+    };
+    document.addEventListener("pointerdown", close);
+    return () => document.removeEventListener("pointerdown", close);
+  }, []);
+  return (
+    <details
+      className="action-menu"
+      ref={menu}
+      onKeyDown={(event) => {
+        if (event.key === "Escape" && menu.current) {
+          menu.current.open = false;
+          menu.current.querySelector("summary")?.focus();
+        }
+      }}
+    >
+      <summary aria-label={label} title={label}>
+        <MoreHorizontal size={18} />
+      </summary>
+      <div
+        className="action-menu-items"
+        onClick={(event) => {
+          if ((event.target as HTMLElement).closest("button,a") && menu.current)
+            menu.current.open = false;
+        }}
+      >
+        {children}
+      </div>
+    </details>
+  );
+}
+export function ConfirmDialog({
+  title,
+  children,
+  confirmLabel = "确认删除",
+  onConfirm,
+  onClose,
+  danger = true,
+}: {
+  title: string;
+  children: ReactNode;
+  confirmLabel?: string;
+  onConfirm: () => Promise<unknown>;
+  onClose: () => void;
+  danger?: boolean;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  return (
+    <Modal
+      title={title}
+      onClose={() => {
+        if (!busy) onClose();
+      }}
+    >
+      <div className="confirm-copy">{children}</div>
+      {error && <Alert>{error}</Alert>}
+      <footer className="modal-actions">
+        <button disabled={busy} onClick={onClose}>
+          取消
+        </button>
+        <button
+          className={danger ? "danger" : "primary"}
+          disabled={busy}
+          onClick={() => {
+            setBusy(true);
+            setError("");
+            void onConfirm()
+              .then(onClose)
+              .catch((e) => setError(messageOf(e)))
+              .finally(() => setBusy(false));
+          }}
+        >
+          {busy ? "正在处理…" : confirmLabel}
+        </button>
+      </footer>
+    </Modal>
+  );
 }
 export async function command(message: unknown) {
   if (!isExtension())

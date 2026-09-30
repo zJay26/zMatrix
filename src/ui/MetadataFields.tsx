@@ -1,4 +1,4 @@
-import { useImperativeHandle, useRef, useState, type Ref } from "react";
+import { useId, useImperativeHandle, useRef, useState, type Ref } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { X, RefreshCw, ExternalLink, TextQuote, Undo2 } from "lucide-react";
 import { db } from "../core/db";
@@ -47,6 +47,7 @@ export function MetadataFields({
   ref?: Ref<MetadataHandle>;
 }) {
   const spec = channelFor(channel);
+  const fieldScope = useId();
   const fields = metadataFor(channel);
   const history = useLiveQuery(
     async () => {
@@ -101,9 +102,9 @@ export function MetadataFields({
   const localCategories = [
     ...new Set([metadata.category, ...history].filter(Boolean)),
   ].filter((name) => !candidates.includes(name));
-  const categoryId = `category-${channel}`;
-  const tagsId = `tags-${channel}`;
-  const summaryId = `summary-${channel}`;
+  const categoryId = `${fieldScope}-category-${channel}`;
+  const tagsId = `${fieldScope}-tags-${channel}`;
+  const summaryId = `${fieldScope}-summary-${channel}`;
   return (
     <div className="metadata-fields">
       <div className="metadata-field">

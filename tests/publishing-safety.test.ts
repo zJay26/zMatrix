@@ -41,7 +41,7 @@ describe("博客园页面写入保护", () => {
     const db = database();
     try {
       const [task] = await enqueue(
-        [await fixture("cnblogs:article")],
+        [await fixture("cnblogs:article", db)],
         "publish",
         db,
       );

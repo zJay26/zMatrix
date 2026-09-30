@@ -32,11 +32,12 @@ import {
   type Preferences,
 } from "../core/preferences";
 import { UpdateSettings } from "./UpdateSettings";
+import { CleanupSettings } from "./CleanupSettings";
 export type SettingsTab = "general" | "platforms" | "backup" | "updates";
 const settingsTabs = [
   { id: "general", label: "通用偏好", icon: SlidersHorizontal },
   { id: "platforms", label: "平台连接", icon: Plug },
-  { id: "backup", label: "数据备份", icon: FolderOpen },
+  { id: "backup", label: "数据与备份", icon: FolderOpen },
   { id: "updates", label: "软件更新", icon: RefreshCw },
 ] as const;
 export function SettingsPage({
@@ -422,6 +423,7 @@ export function SettingsPage({
               }}
             />
           </div>
+          <CleanupSettings />
         </section>
       )}
       {restore && (

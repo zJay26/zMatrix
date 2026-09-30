@@ -1,34 +1,51 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
-import { Play, Pause, ExternalLink, RefreshCw, Search } from "lucide-react";
+import {
+  Play,
+  Pause,
+  ExternalLink,
+  RefreshCw,
+  Search,
+  Trash2,
+} from "lucide-react";
 import { db } from "../core/db";
 import {
   canStart,
-  cancelTask,
+  canRemoveTask,
+  removeTasks,
   hasRemoteActivity,
   stateNames,
 } from "../core/tasks";
 import { messageOf } from "../core/model";
-import { Alert, Empty, PlatformPill, command, timeLabel } from "./shared";
+import {
+  Alert,
+  Empty,
+  PlatformPill,
+  command,
+  timeLabel,
+  ConfirmDialog,
+} from "./shared";
+import type { Task } from "../core/model";
 import { isExtension } from "../platforms/browser-adapter";
 import { channels } from "../platforms/catalog";
 const taskGroups = {
-  all: { label: "全部任务", states: [] as string[] },
-  pending: { label: "待执行", states: ["queued", "paused"] },
+  pending: { label: "待处理", states: [] as string[] },
   active: { label: "执行中", states: ["preparing", "submitting", "verifying"] },
-  attention: {
-    label: "需要处理",
-    states: [
-      "failed",
-      "uncertain",
-      "awaiting_publish",
-      "awaiting_review",
-      "submitted",
-      "reviewing",
-    ],
+  done: {
+    label: "历史记录",
+    states: ["draft_saved", "published", "cancelled"],
   },
-  done: { label: "已完成", states: ["draft_saved", "published", "cancelled"] },
 };
+function inGroup(task: Task, group: keyof typeof taskGroups) {
+  const done =
+    taskGroups.done.states.includes(task.state) && canRemoveTask(task);
+  const active = taskGroups.active.states.includes(task.state);
+  return group === "done"
+    ? done
+    : group === "active"
+      ? active
+      : !done && !active;
+}
 export function QueuePage() {
   const tasks = useLiveQuery(
     () => db.tasks.orderBy("createdAt").reverse().toArray(),
@@ -38,19 +55,30 @@ export function QueuePage() {
   const queueError = useLiveQuery(() => db.meta.get("queueError"));
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
-  const [group, setGroup] = useState<keyof typeof taskGroups>("all");
+  const [group, setGroup] = useState<keyof typeof taskGroups>("pending");
+  const [selected, setSelected] = useState<string[]>([]);
+  const [deletion, setDeletion] = useState<string[] | null>(null);
+  const [notice, setNotice] = useState("");
   const [channel, setChannel] = useState("all");
   const [query, setQuery] = useState("");
   const [limit, setLimit] = useState(30);
   const filtered = tasks.filter(
     (task) =>
-      (group === "all" || taskGroups[group].states.includes(task.state)) &&
+      inGroup(task, group) &&
       (channel === "all" || task.channel === channel) &&
       task.snapshot.title
         .toLocaleLowerCase()
         .includes(query.trim().toLocaleLowerCase()),
   );
   const runnable = filtered.filter(canStart);
+  const removable = filtered.filter(canRemoveTask);
+  const selectedIds = removable
+    .filter((t) => selected.includes(t.id))
+    .map((t) => t.id);
+  const visibleRemovable = removable.filter((t) =>
+    filtered.slice(0, limit).some((v) => v.id === t.id),
+  );
+  useEffect(() => setSelected([]), [group, channel, query]);
   const act = async (message: unknown) => {
     setBusy(true);
     setError("");
@@ -69,7 +97,10 @@ export function QueuePage() {
           <h1>任务队列</h1>
         </div>
         <div className="button-row">
-          <button disabled={busy} onClick={() => void act({ type: "pause" })}>
+          <button
+            disabled={busy || !tasks.some((t) => inGroup(t, "active"))}
+            onClick={() => void act({ type: "pause" })}
+          >
             <Pause size={16} />
             暂停队列
           </button>
@@ -91,6 +122,11 @@ export function QueuePage() {
       {!!(error || queueError?.value) && (
         <Alert>{error || String(queueError?.value)}</Alert>
       )}
+      {notice && (
+        <div className="success-notice" role="status">
+          {notice}
+        </div>
+      )}
       <div className="queue-filters">
         <div className="tabs" aria-label="任务状态">
           {Object.entries(taskGroups).map(([id, item]) => (
@@ -105,9 +141,10 @@ export function QueuePage() {
             >
               {item.label}
               <span>
-                {id === "all"
-                  ? tasks.length
-                  : tasks.filter((t) => item.states.includes(t.state)).length}
+                {
+                  tasks.filter((t) => inGroup(t, id as keyof typeof taskGroups))
+                    .length
+                }
               </span>
             </button>
           ))}
@@ -142,17 +179,81 @@ export function QueuePage() {
           </label>
         </div>
       </div>
+      {!!removable.length && (
+        <div className="selection-bar">
+          <label>
+            <input
+              type="checkbox"
+              aria-label="选择本页可清理任务"
+              checked={
+                !!visibleRemovable.length &&
+                visibleRemovable.every((t) => selected.includes(t.id))
+              }
+              onChange={(e) =>
+                setSelected(
+                  e.target.checked
+                    ? [
+                        ...new Set([
+                          ...selected,
+                          ...visibleRemovable.map((t) => t.id),
+                        ]),
+                      ]
+                    : selected.filter(
+                        (id) => !visibleRemovable.some((t) => t.id === id),
+                      ),
+                )
+              }
+            />
+            选择本页
+          </label>
+          {!!selectedIds.length && (
+            <button
+              className="danger-text"
+              onClick={() => setDeletion(selectedIds)}
+            >
+              <Trash2 size={15} />
+              移除所选（{selectedIds.length}）
+            </button>
+          )}
+          {group === "done" && (
+            <button
+              className="text-button"
+              onClick={() => setDeletion(removable.map((t) => t.id))}
+            >
+              清理当前筛选的历史（{removable.length}）
+            </button>
+          )}
+        </div>
+      )}
       {!tasks.length ? (
         <Empty title="还没有发布任务" action={null}>
           在稿件中打开“发布预览”，选择平台后加入队列。
         </Empty>
       ) : !filtered.length ? (
-        <Empty title="没有匹配的任务">调整平台、状态或关键词后再试。</Empty>
+        <Empty
+          title={group === "pending" ? "当前没有待处理任务" : "没有匹配的任务"}
+        >
+          已结束的任务可在“历史记录”查看或清理。
+        </Empty>
       ) : (
         <div className="task-list">
           {filtered.slice(0, limit).map((task) => (
             <article key={task.id} className="task-card">
               <header>
+                {canRemoveTask(task) && (
+                  <input
+                    type="checkbox"
+                    aria-label={`选择任务 ${task.snapshot.title}`}
+                    checked={selected.includes(task.id)}
+                    onChange={(e) =>
+                      setSelected(
+                        e.target.checked
+                          ? [...selected, task.id]
+                          : selected.filter((id) => id !== task.id),
+                      )
+                    }
+                  />
+                )}
                 <PlatformPill id={task.channel} />
                 <span className={`status status-${task.state}`}>
                   {stateNames[task.state]}
@@ -218,17 +319,14 @@ export function QueuePage() {
                     <ExternalLink size={14} />
                   </a>
                 )}
-                {canStart(task) && (
+                {canRemoveTask(task) && (
                   <button
-                    className="text-button"
+                    className="text-button danger-text"
                     disabled={busy}
-                    onClick={() =>
-                      void cancelTask(task.id).catch((e) =>
-                        setError(messageOf(e)),
-                      )
-                    }
+                    onClick={() => setDeletion([task.id])}
                   >
-                    取消任务
+                    <Trash2 size={14} />
+                    {canStart(task) ? "取消并移除" : "删除记录"}
                   </button>
                 )}
               </div>
@@ -257,6 +355,22 @@ export function QueuePage() {
             已显示 {limit} / {filtered.length} 条
           </span>
         </div>
+      )}
+      {deletion && (
+        <ConfirmDialog
+          title={`移除 ${deletion.length} 条任务记录？`}
+          confirmLabel="确认移除"
+          onClose={() => setDeletion(null)}
+          onConfirm={async () => {
+            await removeTasks(deletion);
+            setSelected([]);
+            setNotice("任务记录已移除，原站内容和发布登记不受影响。");
+          }}
+        >
+          <p>
+            未开始的任务将取消，已结束的记录会从列表移除。已完成内容的防重复发布保护仍然保留。
+          </p>
+        </ConfirmDialog>
       )}
     </div>
   );

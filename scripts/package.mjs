@@ -74,7 +74,7 @@ for (const path of await filesIn(extensionRoot))
   extension[relative(extensionRoot, path).replaceAll("\\", "/")] =
     new Uint8Array(await readFile(path));
 const source = {};
-for (const folder of ["src", "tests", "scripts", "docs", ".github"]) {
+for (const folder of ["src", "tests", "scripts", "docs", "public", ".github"]) {
   for (const path of await filesIn(join(root, folder)))
     source[relative(root, path).replaceAll("\\", "/")] = new Uint8Array(
       await readFile(path),

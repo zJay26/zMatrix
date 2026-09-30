@@ -43,7 +43,7 @@ async function mutateBackup(
 }
 describe("备份恢复", () => {
   it("更名后的自动备份保留旧版最近备份，并写入新的有效备份", async () => {
-    const f = await fixture();
+    const f = await fixture(undefined, source);
     await source.articles.put(f.article);
     const legacy = new Blob(["旧版备份内容"]);
     const written = new Map<string, Blob>();
@@ -84,7 +84,7 @@ describe("备份恢复", () => {
     expect(await source.meta.get("backupCompletedAt")).toBeUndefined();
   });
   it("备份写入期间继续编辑，备份覆盖范围仍停留在快照时间", async () => {
-    const f = await fixture();
+    const f = await fixture(undefined, source);
     await source.articles.put(f.article);
     await source.meta.put({ key: "dataChangedAt", value: 10 });
     const handle = {
@@ -109,7 +109,7 @@ describe("备份恢复", () => {
     expect((await source.meta.get("dataChangedAt"))?.value).toBe(20);
   });
   it("正文、素材、平台版本和任务一并恢复，任务暂停而非自动执行", async () => {
-    const f = await fixture();
+    const f = await fixture(undefined, source);
     const image = await addAsset(imageFile(), source);
     f.article.imageIds.push(image.id);
     f.article.markdown += `\n![图片](asset://${image.id})`;
@@ -136,7 +136,7 @@ describe("备份恢复", () => {
     );
   });
   it("校验素材摘要；损坏备份不会留下半份恢复记录", async () => {
-    const f = await fixture();
+    const f = await fixture(undefined, source);
     const image = await addAsset(imageFile(), source);
     f.article.imageIds = [image.id];
     await source.articles.put(f.article);
@@ -151,7 +151,7 @@ describe("备份恢复", () => {
     expect(await target.assets.count()).toBe(0);
   });
   it("恢复保留更新的本地稿，合并同一远端文章并重新关联评论", async () => {
-    const f = await fixture();
+    const f = await fixture(undefined, source);
     await source.articles.put(f.article);
     await source.posts.put(post);
     await mergeCommentPage(
@@ -187,7 +187,7 @@ describe("备份恢复", () => {
     );
   });
   it("中断提交恢复成待核实，移除旧浏览器标签页 ID", async () => {
-    const f = await fixture();
+    const f = await fixture(undefined, source);
     const [task] = await enqueue([f], "publish", source);
     await source.tasks.update(task!.id, { state: "submitting", tabId: 99 });
     await restoreBackup(await exportBackup(source), target);
@@ -197,7 +197,7 @@ describe("备份恢复", () => {
     });
   });
   it("旧格式保留；未知新格式、外站跳转被拒绝，HTML 清除脚本", async () => {
-    const f = await fixture();
+    const f = await fixture(undefined, source);
     await source.articles.put(f.article);
     await enqueue([f], "draft", source);
     const backup = await exportBackup(source);
@@ -225,7 +225,7 @@ describe("备份恢复", () => {
     expect(safe.tasks[0]?.prepared.html).toBe("<p>正文</p>");
   });
   it("备份目录授权失效不损害本地稿件", async () => {
-    const f = await fixture();
+    const f = await fixture(undefined, source);
     await source.articles.put(f.article);
     const handle = {
       queryPermission: async () => "denied",
@@ -233,13 +233,13 @@ describe("备份恢复", () => {
     await expect(directoryBackup(handle, source)).rejects.toThrow("重新授权");
     expect(await source.articles.get(f.article.id)).toEqual(f.article);
   });
-  it("重新打开 v1 数据库仍保留内容", async () => {
-    const f = await fixture();
+  it("重新打开数据库仍保留内容", async () => {
+    const f = await fixture(undefined, source);
     await source.articles.put(f.article);
     source.close();
     await source.open();
     expect(await source.articles.get(f.article.id)).toEqual(f.article);
-    expect(source.verno).toBe(1);
+    expect(source.verno).toBe(2);
   });
 });
 describe("登记与评论分页", () => {

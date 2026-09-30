@@ -2,6 +2,7 @@ import { defineConfig } from "wxt";
 import { readFileSync } from "node:fs";
 
 export default defineConfig({
+  outDir: process.env.ZMATRIX_OUTPUT_DIR ?? ".output",
   srcDir: "src",
   modules: ["@wxt-dev/module-react"],
   webExt: { disabled: true },

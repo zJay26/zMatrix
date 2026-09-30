@@ -57,6 +57,7 @@ const schema = z.object({
       createdAt: timestamp,
       updatedAt: timestamp,
       archived: z.boolean(),
+      trashedAt: timestamp.optional(),
     }),
   ),
   variants: z.array(
@@ -76,6 +77,7 @@ const schema = z.object({
       name: text,
       type: z.enum(["image/png", "image/jpeg", "image/webp", "image/gif"]),
       createdAt: timestamp,
+      protectedUntil: timestamp.optional(),
     }),
   ),
   posts: z.array(
@@ -123,6 +125,17 @@ const schema = z.object({
       events: z.array(z.object({ at: timestamp, message: text })),
     }),
   ),
+  taskReceipts: z
+    .array(
+      z.object({
+        id,
+        channel,
+        mode: z.enum(["draft", "publish"]),
+        fingerprint: id,
+        recordedAt: timestamp,
+      }),
+    )
+    .default([]),
   metrics: z.array(
     z.object({
       postId: id,
@@ -180,6 +193,7 @@ export async function exportBackup(
       assets: await database.assets.toArray(),
       posts: await database.posts.toArray(),
       tasks: await database.tasks.toArray(),
+      taskReceipts: await database.taskReceipts.toArray(),
       metrics: await database.metrics.toArray(),
       comments: await database.comments.toArray(),
       commentSync: await database.commentSync.toArray(),
@@ -272,6 +286,7 @@ export async function inspectBackup(blob: Blob) {
     data.variants,
     data.posts,
     data.tasks,
+    data.taskReceipts,
     data.comments,
     data.assets,
   ])
@@ -297,6 +312,11 @@ export async function inspectBackup(blob: Blob) {
       throw new Error("备份中的链接不属于对应平台。");
   };
   const posts = new Map(data.posts.map((p) => [p.id, p]));
+  for (const receipt of data.taskReceipts)
+    if (
+      receipt.id !== `${receipt.channel}/${receipt.mode}/${receipt.fingerprint}`
+    )
+      throw new Error("备份中的防重记录不合法。");
   for (const post of data.posts) {
     assertUrl(post.url, post.channel);
     if (post.editorUrl) assertUrl(post.editorUrl, post.channel);
@@ -348,6 +368,7 @@ export async function restoreBackup(blob: Blob, database: WorkbenchDB = db) {
     await merge(database.articles, data.articles, "id");
     await merge(database.variants, data.variants, "id");
     await merge(database.assets, data.assets, "id");
+    await merge(database.taskReceipts, data.taskReceipts, "id");
     await merge(database.posts, posts, "id");
     await merge(
       database.tasks,

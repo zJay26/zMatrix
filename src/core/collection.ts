@@ -48,9 +48,11 @@ export async function mergeCommentPage(
   await database.transaction(
     "rw",
     database.comments,
+    database.posts,
     database.commentSync,
     database.meta,
     async () => {
+      if (!(await database.posts.get(post.id))) return;
       for (const incoming of page.comments) {
         const id = `${post.id}/${incoming.remoteId}`;
         const existing = await database.comments.get(id);
@@ -75,6 +77,43 @@ export async function mergeCommentPage(
     },
   );
 }
+export async function updateRegistration(
+  id: string,
+  title: string,
+  articleId: string | undefined,
+  database = db,
+) {
+  return database.transaction(
+    "rw",
+    database.posts,
+    database.articles,
+    database.meta,
+    async () => {
+      if (!title.trim()) throw new Error("请填写文章标题");
+      if (!(await database.posts.get(id)))
+        throw new Error("登记记录已删除，请刷新。");
+      if (articleId) {
+        const article = await database.articles.get(articleId);
+        if (!article || article.trashedAt)
+          throw new Error("关联稿件不存在或已在回收站。");
+      }
+      await database.posts.update(id, {
+        title: title.trim(),
+        articleId,
+        updatedAt: Date.now(),
+      });
+      await changed(database);
+    },
+  );
+}
+async function saveMetricsIfTracked(
+  postId: string,
+  values: import("./model").Metrics,
+) {
+  await db.transaction("rw", db.posts, db.metrics, async () => {
+    if (await db.posts.get(postId)) await db.metrics.put(values);
+  });
+}
 export async function refreshPost(
   post: RemotePost,
   cursor?: string,
@@ -87,7 +126,7 @@ export async function refreshPost(
     try {
       const metrics = await adapter.fetchMetrics(post);
       if (!metrics.values.length) throw new Error("平台未返回可用指标");
-      await db.metrics.put({
+      await saveMetricsIfTracked(post.id, {
         postId: post.id,
         ...metrics,
         collectedAt: now,
@@ -95,7 +134,7 @@ export async function refreshPost(
       });
     } catch (error) {
       const old = await db.metrics.get(post.id);
-      await db.metrics.put({
+      await saveMetricsIfTracked(post.id, {
         ...old,
         postId: post.id,
         values: old?.values ?? [],
@@ -110,15 +149,18 @@ export async function refreshPost(
     await mergeCommentPage(post, await adapter.fetchComments(post, cursor));
   } catch (error) {
     const old = await db.commentSync.get(post.id);
-    await db.commentSync.put({
-      ...old,
-      postId: post.id,
-      sourceUrl: old?.sourceUrl ?? post.url,
-      collectedAt: old?.collectedAt ?? 0,
-      lastAttemptAt: now,
-      scope: old?.scope ?? "尚未成功读取",
-      complete: old?.complete ?? false,
-      error: messageOf(error),
+    await db.transaction("rw", db.posts, db.commentSync, async () => {
+      if (!(await db.posts.get(post.id))) return;
+      await db.commentSync.put({
+        ...old,
+        postId: post.id,
+        sourceUrl: old?.sourceUrl ?? post.url,
+        collectedAt: old?.collectedAt ?? 0,
+        lastAttemptAt: now,
+        scope: old?.scope ?? "尚未成功读取",
+        complete: old?.complete ?? false,
+        error: messageOf(error),
+      });
     });
   }
   await changed();
