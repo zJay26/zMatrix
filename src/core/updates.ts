@@ -18,6 +18,8 @@ export interface ReleaseInfo {
   prerelease: boolean;
   downloadUrl?: string;
   size?: number;
+  assetId?: number;
+  sha256?: string;
 }
 export interface UpdateState {
   checkedAt?: number;
@@ -76,6 +78,8 @@ const releaseSchema = z.object({
       name: z.string(),
       browser_download_url: z.string(),
       size: z.number().nonnegative(),
+      id: z.number().int().positive().optional(),
+      digest: z.string().nullable().optional(),
     }),
   ),
 });
@@ -131,6 +135,8 @@ export function latestRelease(
         prerelease: r.prerelease || !!semver.pre,
         downloadUrl: asset?.browser_download_url,
         size: asset?.size,
+        assetId: asset?.id,
+        sha256: asset?.digest?.match(/^sha256:([a-f0-9]{64})$/)?.[1],
       },
     ];
   });

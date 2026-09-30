@@ -46,7 +46,13 @@ export class WorkbenchDB extends Dexie {
   }
 }
 export const db = new WorkbenchDB();
+export const INSTALL_KEY = "extensionInstallation";
+export async function assertNotInstalling(database = db) {
+  if (await database.meta.get(INSTALL_KEY))
+    throw new Error("软件正在更新，请完成更新或恢复后再操作。");
+}
 export async function changed(database = db) {
+  await assertNotInstalling(database);
   await database.meta.put({ key: "dataChangedAt", value: Date.now() });
 }
 export async function getMeta<T>(

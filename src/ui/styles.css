@@ -2988,3 +2988,21 @@ button.danger:hover {
 .action-menu-items button.danger-text {
   color: var(--danger);
 }
+.install-directory small {
+  display: block;
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 0.85rem;
+  font-weight: 400;
+}
+.install-progress {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 20px 0 8px;
+  color: var(--blue);
+}
+.install-backup {
+  overflow-wrap: anywhere;
+  font-size: 0.85rem;
+}

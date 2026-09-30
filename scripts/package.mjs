@@ -70,9 +70,37 @@ await copyFile(
 await writeFile(join(extensionRoot, "THIRD_PARTY_LICENSES.txt"), licenseText);
 await copyFile(join(root, "LICENSE"), join(extensionRoot, "LICENSE"));
 const extension = {};
-for (const path of await filesIn(extensionRoot))
-  extension[relative(extensionRoot, path).replaceAll("\\", "/")] =
-    new Uint8Array(await readFile(path));
+for (const path of await filesIn(extensionRoot)) {
+  const name = relative(extensionRoot, path).replaceAll("\\", "/");
+  if (name.startsWith("zmatrix-update-backup/"))
+    throw new Error(
+      "Refusing to package an installed directory containing workspace backups. Build in a separate output directory.",
+    );
+  if (name === "zmatrix-package.json") continue;
+  extension[name] = new Uint8Array(await readFile(path));
+}
+const packageIndex = strToU8(
+  JSON.stringify(
+    {
+      format: "zmatrix-extension",
+      installer: 1,
+      version: pkg.version,
+      files: Object.fromEntries(
+        Object.entries(extension).map(([name, bytes]) => [
+          name,
+          {
+            size: bytes.length,
+            sha256: createHash("sha256").update(bytes).digest("hex"),
+          },
+        ]),
+      ),
+    },
+    null,
+    2,
+  ),
+);
+extension["zmatrix-package.json"] = packageIndex;
+await writeFile(join(extensionRoot, "zmatrix-package.json"), packageIndex);
 const source = {};
 for (const folder of ["src", "tests", "scripts", "docs", "public", ".github"]) {
   for (const path of await filesIn(join(root, folder)))

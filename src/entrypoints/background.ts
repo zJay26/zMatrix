@@ -13,6 +13,13 @@ import { refreshPost } from "../core/collection";
 import { z } from "zod";
 import { MANUAL_PUBLISH_PROTOCOL } from "../core/commands";
 import {
+  beginInstallation,
+  clearInstallation,
+  getInstallation,
+  patchInstallation,
+  verifyInstalledResources,
+} from "../core/installation-state";
+import {
   handleCnblogsGuardMessage,
   removeCnblogsGuard,
 } from "../platforms/cnblogs-guard";
@@ -22,12 +29,20 @@ import {
   UPDATE_ALARM,
   UPDATE_KEY,
   getUpdateState,
+  compareVersions,
 } from "../core/updates";
 
 const command = z.discriminatedUnion("type", [
   z.object({ type: z.literal("capabilities") }),
   z.object({ type: z.literal("checkUpdates"), manual: z.boolean().optional() }),
   z.object({ type: z.literal("configureUpdates") }),
+  z.object({
+    type: z.literal("beginUpdate"),
+    id: z.string().uuid(),
+    version: z.string(),
+    currentVersion: z.string(),
+  }),
+  z.object({ type: z.literal("finishUpdate"), id: z.string().uuid() }),
   z.object({
     type: z.literal("run"),
     ids: z.array(z.string()).max(100),
@@ -71,19 +86,54 @@ export default defineBackground(() => {
   const owner = uid();
   let running = false;
   let collectionRunning = false;
+  let activeCalls = 0;
+  let updateStarting = false;
   let pauseRequested = false;
-  const initialized = db.tasks.toArray().then(async (tasks) => {
+  async function finishInstalledUpdate() {
+    const record = await getInstallation();
+    if (!record || chrome.runtime.getManifest().version !== record.to)
+      return false;
+    await verifyInstalledResources(record, (path) =>
+      chrome.runtime.getURL(path),
+    );
+    await clearInstallation(record.id, {
+      version: record.to,
+      backup: record.backup,
+    });
+    const url = chrome.runtime.getURL("/workbench.html#updates");
+    if (record.tabId !== undefined) {
+      const tab = await chrome.tabs.get(record.tabId).catch(() => undefined);
+      if (tab?.url?.startsWith(chrome.runtime.getURL("/workbench.html"))) {
+        await chrome.tabs.update(record.tabId, { url, active: true });
+        return true;
+      }
+    }
+    await chrome.tabs.create({ url });
+    return true;
+  }
+  const initialized = (async () => {
+    try {
+      await finishInstalledUpdate();
+    } catch (error) {
+      const record = await getInstallation();
+      if (record)
+        await patchInstallation(record.id, { error: messageOf(error) });
+    }
+    if (await getInstallation()) return;
+    const tasks = await db.tasks.toArray();
     for (const task of tasks) {
       const recovered = recoverTask(task);
       if (recovered !== task) await db.tasks.put(recovered);
     }
-  });
+  })();
   chrome.action.onClicked.addListener(async () => {
     const url = chrome.runtime.getURL("/workbench.html");
-    const [existing] = await chrome.runtime.getContexts({
+    const contexts = await chrome.runtime.getContexts({
       contextTypes: [chrome.runtime.ContextType.TAB],
-      documentUrls: [url],
     });
+    const existing = contexts.find(
+      (context) => context.documentUrl?.split(/[?#]/)[0] === url,
+    );
     if (existing && existing.tabId >= 0)
       await chrome.tabs.update(existing.tabId, { active: true });
     else await chrome.tabs.create({ url });
@@ -140,6 +190,7 @@ export default defineBackground(() => {
     running = true;
     pauseRequested = false;
     try {
+      await db.meta.delete("queueError");
       for (const id of ids) {
         if (pauseRequested) break;
         let task = await claimTask(id, owner);
@@ -246,78 +297,131 @@ export default defineBackground(() => {
         return { ok: true };
       }
       await initialized;
-      if (request.type === "pause") {
-        pauseRequested = true;
-        return { ok: true };
-      }
-      if (request.type === "run") {
-        if (running || collectionRunning)
-          throw new Error("已有任务运行，请稍后继续。");
-        await db.meta.delete("queueError");
-        void run(request.ids).catch(async (error) => {
-          await db.meta.put({ key: "queueError", value: messageOf(error) });
-        });
-        return { ok: true };
-      }
-      if (request.type === "probe") {
-        if (running) throw new Error("发布进行中，请稍后检查平台");
-        const probe = await adapterFor(request.channel).checkSession();
-        await db.probes.put(probe);
-        return { ok: true };
-      }
-      if (request.type === "verify") {
-        if (running || collectionRunning)
-          throw new Error("已有任务运行，请稍后核实。");
-        const task = await db.tasks.get(request.id);
-        if (!task?.tabId)
-          throw new Error("原标签页已不可用，请在原站核实并登记文章链接。");
-        const receipt = await adapterFor(task.channel).verify(
-          { tabId: task.tabId, channel: task.channel, taskId: task.id },
-          task.snapshot,
-          task.prepared,
-          task.mode,
-        );
-        if (
-          receipt.status === "uncertain" &&
-          !receipt.remoteId &&
-          !receipt.url &&
-          (task.state === "awaiting_publish" ||
-            task.state === "awaiting_review")
-        ) {
-          receipt.status = task.state;
-          receipt.detail =
-            "尚未核实到发布结果，保留等待状态。最终发布需在原站手动完成。";
-        }
-        await record(task, receipt);
-        return { ok: true };
-      }
-      if (request.type === "refresh") {
-        if (running || collectionRunning)
-          return { ok: false, error: "已有任务运行，稍后再刷新。" };
-        collectionRunning = true;
-        await db.meta.put({ key: "refreshRunning", value: true });
-        void (async () => {
-          try {
-            const posts = request.postId
-              ? [await db.posts.get(request.postId)]
-              : await db.posts.toArray();
-            for (const post of posts) {
-              if (post)
-                await refreshPost(post, request.cursor, !!request.cursor);
-            }
-          } finally {
-            collectionRunning = false;
-            await db.meta.put({ key: "refreshRunning", value: false });
-          }
-        })().catch(async (error) => {
-          await db.meta.put({
-            key: "collectionError",
-            value: messageOf(error),
+      if (request.type === "beginUpdate") {
+        if (running || collectionRunning || activeCalls || updateStarting)
+          throw new Error("后台仍在处理任务，请完成后再更新。");
+        updateStarting = true;
+        try {
+          if (request.currentVersion !== chrome.runtime.getManifest().version)
+            throw new Error("前后台版本不一致，请先重新加载扩展。");
+          if (compareVersions(request.version, request.currentVersion) <= 0)
+            throw new Error("该版本无需安装，请重新检查更新。");
+          const contexts = await chrome.runtime.getContexts({
+            contextTypes: [chrome.runtime.ContextType.TAB],
           });
-        });
+          const pages = contexts.filter(
+            (context) =>
+              context.documentUrl?.split(/[?#]/)[0] ===
+              chrome.runtime.getURL("/workbench.html"),
+          );
+          if (pages.length !== 1)
+            throw new Error(
+              "请先保存并关闭其他 zMatrix 工作台标签页，再进行更新。",
+            );
+          await beginInstallation({
+            id: request.id,
+            from: request.currentVersion,
+            to: request.version,
+            stage: "downloading",
+            startedAt: Date.now(),
+            tabId: pages[0]!.tabId,
+          });
+          return { ok: true };
+        } finally {
+          updateStarting = false;
+        }
+      }
+      if (request.type === "finishUpdate") {
+        const record = await getInstallation();
+        if (!record || record.id !== request.id)
+          throw new Error("更新状态已变化，请重新打开工作台。");
+        if (await finishInstalledUpdate()) return { ok: true };
+        if (record.stage !== "ready")
+          throw new Error("安装尚未完成，请先恢复。");
+        await verifyInstalledResources(record, (path) =>
+          chrome.runtime.getURL(path),
+        );
+        setTimeout(() => chrome.runtime.reload(), 200);
         return { ok: true };
       }
-      return { ok: false, error: "未处理的请求" };
+      if (updateStarting || (await getInstallation()) || updateStarting)
+        throw new Error("软件正在更新，请完成更新或恢复后再执行任务。");
+      activeCalls++;
+      try {
+        if (request.type === "pause") {
+          pauseRequested = true;
+          return { ok: true };
+        }
+        if (request.type === "run") {
+          if (running || collectionRunning)
+            throw new Error("已有任务运行，请稍后继续。");
+          void run(request.ids).catch(async (error) => {
+            await db.meta.put({ key: "queueError", value: messageOf(error) });
+          });
+          return { ok: true };
+        }
+        if (request.type === "probe") {
+          if (running) throw new Error("发布进行中，请稍后检查平台");
+          const probe = await adapterFor(request.channel).checkSession();
+          await db.probes.put(probe);
+          return { ok: true };
+        }
+        if (request.type === "verify") {
+          if (running || collectionRunning)
+            throw new Error("已有任务运行，请稍后核实。");
+          const task = await db.tasks.get(request.id);
+          if (!task?.tabId)
+            throw new Error("原标签页已不可用，请在原站核实并登记文章链接。");
+          const receipt = await adapterFor(task.channel).verify(
+            { tabId: task.tabId, channel: task.channel, taskId: task.id },
+            task.snapshot,
+            task.prepared,
+            task.mode,
+          );
+          if (
+            receipt.status === "uncertain" &&
+            !receipt.remoteId &&
+            !receipt.url &&
+            (task.state === "awaiting_publish" ||
+              task.state === "awaiting_review")
+          ) {
+            receipt.status = task.state;
+            receipt.detail =
+              "尚未核实到发布结果，保留等待状态。最终发布需在原站手动完成。";
+          }
+          await record(task, receipt);
+          return { ok: true };
+        }
+        if (request.type === "refresh") {
+          if (running || collectionRunning)
+            return { ok: false, error: "已有任务运行，稍后再刷新。" };
+          collectionRunning = true;
+          await db.meta.put({ key: "refreshRunning", value: true });
+          void (async () => {
+            try {
+              const posts = request.postId
+                ? [await db.posts.get(request.postId)]
+                : await db.posts.toArray();
+              for (const post of posts) {
+                if (post)
+                  await refreshPost(post, request.cursor, !!request.cursor);
+              }
+            } finally {
+              collectionRunning = false;
+              await db.meta.put({ key: "refreshRunning", value: false });
+            }
+          })().catch(async (error) => {
+            await db.meta.put({
+              key: "collectionError",
+              value: messageOf(error),
+            });
+          });
+          return { ok: true };
+        }
+        return { ok: false, error: "未处理的请求" };
+      } finally {
+        activeCalls--;
+      }
     })().then(sendResponse, (error) =>
       sendResponse({ ok: false, error: messageOf(error) }),
     );

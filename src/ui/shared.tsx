@@ -54,15 +54,19 @@ export function Modal({
   onClose,
   children,
   wide = false,
+  dismissible = true,
 }: {
   title: string;
   onClose: () => void;
   children: ReactNode;
   wide?: boolean;
+  dismissible?: boolean;
 }) {
   const dialog = useRef<HTMLElement>(null);
   const close = useRef(onClose);
-  close.current = onClose;
+  close.current = () => {
+    if (dismissible) onClose();
+  };
   useEffect(() => {
     const active = document.activeElement as HTMLElement | null;
     const focusable = () =>
@@ -101,7 +105,7 @@ export function Modal({
     <div
       className="modal-backdrop"
       onMouseDown={(event) => {
-        if (event.target === event.currentTarget) onClose();
+        if (dismissible && event.target === event.currentTarget) onClose();
       }}
     >
       <section
@@ -114,9 +118,11 @@ export function Modal({
       >
         <header>
           <h2>{title}</h2>
-          <button aria-label="关闭对话框" onClick={onClose}>
-            <X size={19} />
-          </button>
+          {dismissible && (
+            <button aria-label="关闭对话框" onClick={onClose}>
+              <X size={19} />
+            </button>
+          )}
         </header>
         {children}
       </section>

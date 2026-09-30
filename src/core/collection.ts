@@ -17,27 +17,29 @@ export async function registerPost(
   snapshot?: Snapshot,
   database: WorkbenchDB = db,
 ) {
-  const parsed = parseRemoteUrl(url, channel);
-  const existing = await database.posts
-    .where("[channel+remoteId]")
-    .equals([channel, parsed.remoteId])
-    .first();
-  if (existing) return existing;
-  const post: RemotePost = {
-    id: uid(),
-    channel,
-    remoteId: parsed.remoteId,
-    url: parsed.url,
-    title,
-    articleId,
-    snapshot,
-    status: "published",
-    registeredAt: Date.now(),
-    updatedAt: Date.now(),
-  };
-  await database.posts.add(post);
-  await changed(database);
-  return post;
+  return database.transaction("rw", database.posts, database.meta, async () => {
+    const parsed = parseRemoteUrl(url, channel);
+    const existing = await database.posts
+      .where("[channel+remoteId]")
+      .equals([channel, parsed.remoteId])
+      .first();
+    if (existing) return existing;
+    const post: RemotePost = {
+      id: uid(),
+      channel,
+      remoteId: parsed.remoteId,
+      url: parsed.url,
+      title,
+      articleId,
+      snapshot,
+      status: "published",
+      registeredAt: Date.now(),
+      updatedAt: Date.now(),
+    };
+    await database.posts.add(post);
+    await changed(database);
+    return post;
+  });
 }
 export async function mergeCommentPage(
   post: RemotePost,

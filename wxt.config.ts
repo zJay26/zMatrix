@@ -30,7 +30,10 @@ export default defineConfig({
       "alarms",
       "declarativeNetRequestWithHostAccess",
     ],
-    host_permissions: ["https://api.github.com/*"],
+    host_permissions: [
+      "https://api.github.com/*",
+      "https://release-assets.githubusercontent.com/*",
+    ],
     optional_host_permissions: [
       "https://*.zhihu.com/*",
       "https://juejin.cn/*",

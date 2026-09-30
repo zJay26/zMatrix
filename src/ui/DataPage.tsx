@@ -263,11 +263,21 @@ export function DataPage() {
                       <button
                         className="text-button"
                         onClick={() =>
-                          void db.comments
-                            .update(comment.id, {
-                              readAt: comment.readAt ? undefined : Date.now(),
-                            })
-                            .then(() => changed())
+                          void db
+                            .transaction(
+                              "rw",
+                              db.comments,
+                              db.meta,
+                              async () => {
+                                await db.comments.update(comment.id, {
+                                  readAt: comment.readAt
+                                    ? undefined
+                                    : Date.now(),
+                                });
+                                await changed();
+                              },
+                            )
+                            .catch((e) => setError(messageOf(e)))
                         }
                       >
                         {comment.readAt ? "标为未读" : "标为已读"}

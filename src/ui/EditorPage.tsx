@@ -664,11 +664,18 @@ export function EditorPage({
                             article,
                             current ?? newVariant(article, post.channel),
                           );
-                          await db.posts.update(post.id, {
-                            snapshot,
-                            updatedAt: Date.now(),
-                          });
-                          await changed();
+                          await db.transaction(
+                            "rw",
+                            db.posts,
+                            db.meta,
+                            async () => {
+                              await db.posts.update(post.id, {
+                                snapshot,
+                                updatedAt: Date.now(),
+                              });
+                              await changed();
+                            },
+                          );
                         } catch (e) {
                           setError(messageOf(e));
                         }

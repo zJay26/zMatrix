@@ -1,4 +1,4 @@
-import { db, changed, type WorkbenchDB } from "./db";
+import { db, changed, assertNotInstalling, type WorkbenchDB } from "./db";
 import { sha256 } from "./variants";
 import type { Asset, WireAsset } from "./model";
 const mimeByExtension: Record<string, string> = {
@@ -37,6 +37,7 @@ export async function addAsset(
     database.assets,
     database.meta,
     async () => {
+      await assertNotInstalling(database);
       const existing = await database.assets.get(asset.id);
       if (existing) {
         await database.assets.update(asset.id, {

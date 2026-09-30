@@ -116,6 +116,17 @@ describe("常用设置", () => {
 });
 
 describe("版本选择与下载入口", () => {
+  it("保留 GitHub 附件 ID 和 SHA-256 以支持点击安装", () => {
+    const value = release("0.4.1");
+    Object.assign(value.assets[0]!, {
+      id: 123,
+      digest: `sha256:${"a".repeat(64)}`,
+    });
+    expect(latestRelease([value], true)).toMatchObject({
+      assetId: 123,
+      sha256: "a".repeat(64),
+    });
+  });
   it.each([
     ["0.10.0", "0.9.9", 1],
     ["v1.0.0", "1.0.0", 0],

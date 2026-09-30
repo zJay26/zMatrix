@@ -32,6 +32,10 @@ import {
   hasUpdate,
 } from "../core/updates";
 import type { SettingsTab } from "./SettingsPage";
+import { getInstallation } from "../core/installation-state";
+const UpdateOverlay = lazy(() =>
+  import("./UpdateOverlay").then((m) => ({ default: m.UpdateOverlay })),
+);
 
 const EditorPage = lazy(() =>
   import("./EditorPage").then((m) => ({ default: m.EditorPage })),
@@ -50,7 +54,10 @@ type Screen = "library" | "queue" | "data" | "settings";
 export function App() {
   const preferences = useLiveQuery(() => getPreferences());
   const update = useLiveQuery(() => getUpdateState());
-  const [settingsTab, setSettingsTab] = useState<SettingsTab>("general");
+  const installation = useLiveQuery(() => getInstallation());
+  const [settingsTab, setSettingsTab] = useState<SettingsTab>(
+    location.hash === "#updates" ? "updates" : "general",
+  );
   const unreadCount = useLiveQuery(
     () => db.comments.filter((c) => !c.readAt).count(),
     [],
@@ -65,7 +72,9 @@ export function App() {
   const directory = useLiveQuery(() => db.meta.get("backupDirectory"));
   const backupAt = useLiveQuery(() => db.meta.get("backupCompletedAt"));
   const coveredAt = useLiveQuery(() => db.meta.get("backupCoveredChangeAt"));
-  const [screen, setScreen] = useState<Screen>("library");
+  const [screen, setScreen] = useState<Screen>(
+    location.hash === "#updates" ? "settings" : "library",
+  );
   const [libraryView, setLibraryView] = useState(defaultLibraryView);
   const [editing, setEditing] = useState<Article | null>(null);
   const [newDraftId, setNewDraftId] = useState<string | null>(null);
@@ -179,185 +188,201 @@ export function App() {
       </div>
     );
   return (
-    <div className="app-shell">
-      <aside className="sidebar">
-        <a
-          className="brand"
-          aria-label="zMatrix 内容库"
-          href="#"
-          onClick={(e) => {
-            e.preventDefault();
-            void navigate(() => {
-              setEditing(null);
-              setScreen("library");
-            });
-          }}
-        >
-          <img
-            className="brand-mark"
-            src="/icon/zmatrix.svg"
-            alt=""
-            width={43}
-            height={43}
-          />
-          <span>
-            zMatrix<small>创作工作台</small>
-          </span>
-        </a>
-        <button
-          className="new-article"
-          aria-label="写新稿"
-          onClick={() => void create()}
-        >
-          <Plus size={18} />
-          写新稿
-        </button>
-        <nav aria-label="工作台导航">
-          {nav.map((item) => {
-            const count =
-              item.id === "data"
-                ? unreadCount
-                : item.id === "queue"
-                  ? queuedCount
-                  : 0;
-            return (
-              <button
-                key={item.id}
-                aria-label={item.name}
-                aria-current={screen === item.id ? "page" : undefined}
-                className={`${screen === item.id ? "active" : ""} ${item.id === "settings" ? "settings-nav" : ""}`}
-                onClick={() =>
-                  void navigate(() => {
-                    setEditing(null);
-                    setScreen(item.id);
-                    if (item.id === "settings") setSettingsTab("general");
-                  })
-                }
-              >
-                <item.icon size={19} />
-                <span>{item.name}</span>
-                {!!count && <b>{count}</b>}
-                {item.id === "settings" && updateAvailable && (
-                  <i className="nav-update-dot" aria-label="有新版本" />
-                )}
-              </button>
-            );
-          })}
-        </nav>
-        <div className="sidebar-foot">
-          <div>
-            <span className="online-dot" />
-            本地工作空间
-          </div>
-          <p>
-            {backupError
-              ? "目录备份需要处理"
-              : directory
-                ? `备份 ${timeLabel(backupAt?.value as number)}`
-                : "建议设置文件夹备份"}
-          </p>
-          <button
-            className="text-button"
-            onClick={() =>
+    <>
+      <div className="app-shell" inert={!!installation}>
+        <aside className="sidebar">
+          <a
+            className="brand"
+            aria-label="zMatrix 内容库"
+            href="#"
+            onClick={(e) => {
+              e.preventDefault();
               void navigate(() => {
                 setEditing(null);
-                setScreen("settings");
-                setSettingsTab("backup");
-              })
-            }
+                setScreen("library");
+              });
+            }}
           >
-            管理备份
-            <ArrowUpRight size={13} />
+            <img
+              className="brand-mark"
+              src="/icon/zmatrix.svg"
+              alt=""
+              width={43}
+              height={43}
+            />
+            <span>
+              zMatrix<small>创作工作台</small>
+            </span>
+          </a>
+          <button
+            className="new-article"
+            aria-label="写新稿"
+            onClick={() => void create()}
+          >
+            <Plus size={18} />
+            写新稿
           </button>
-        </div>
-      </aside>
-      <main className="main-panel">
-        {updateAvailable &&
-          update?.release &&
-          update.dismissedVersion !== update.release.version && (
-            <div className="update-banner" role="status">
-              <Download size={18} />
-              <span>新版本 v{update.release.version} 已发布</span>
+          <nav aria-label="工作台导航">
+            {nav.map((item) => {
+              const count =
+                item.id === "data"
+                  ? unreadCount
+                  : item.id === "queue"
+                    ? queuedCount
+                    : 0;
+              return (
+                <button
+                  key={item.id}
+                  aria-label={item.name}
+                  aria-current={screen === item.id ? "page" : undefined}
+                  className={`${screen === item.id ? "active" : ""} ${item.id === "settings" ? "settings-nav" : ""}`}
+                  onClick={() =>
+                    void navigate(() => {
+                      setEditing(null);
+                      setScreen(item.id);
+                      if (item.id === "settings") setSettingsTab("general");
+                    })
+                  }
+                >
+                  <item.icon size={19} />
+                  <span>{item.name}</span>
+                  {!!count && <b>{count}</b>}
+                  {item.id === "settings" && updateAvailable && (
+                    <i className="nav-update-dot" aria-label="有新版本" />
+                  )}
+                </button>
+              );
+            })}
+          </nav>
+          <div className="sidebar-foot">
+            <div>
+              <span className="online-dot" />
+              本地工作空间
+            </div>
+            <p>
+              {backupError
+                ? "目录备份需要处理"
+                : directory
+                  ? `备份 ${timeLabel(backupAt?.value as number)}`
+                  : "建议设置文件夹备份"}
+            </p>
+            <button
+              className="text-button"
+              onClick={() =>
+                void navigate(() => {
+                  setEditing(null);
+                  setScreen("settings");
+                  setSettingsTab("backup");
+                })
+              }
+            >
+              管理备份
+              <ArrowUpRight size={13} />
+            </button>
+          </div>
+        </aside>
+        <main className="main-panel">
+          {updateAvailable &&
+            update?.release &&
+            update.dismissedVersion !== update.release.version && (
+              <div className="update-banner" role="status">
+                <Download size={18} />
+                <span>新版本 v{update.release.version} 已发布</span>
+                <button
+                  className="text-button"
+                  onClick={() =>
+                    void navigate(() => {
+                      setEditing(null);
+                      setScreen("settings");
+                      setSettingsTab("updates");
+                    })
+                  }
+                >
+                  查看更新
+                  <ArrowUpRight size={15} />
+                </button>
+                <button
+                  className="icon-button"
+                  aria-label="关闭此版本提醒"
+                  title="关闭此版本提醒"
+                  onClick={() =>
+                    void dismissUpdate(update.release!.version).catch((e) =>
+                      setError(messageOf(e)),
+                    )
+                  }
+                >
+                  <X size={17} />
+                </button>
+              </div>
+            )}
+          {error && <Alert>{error}</Alert>}
+          {backupError && (
+            <Alert>
+              {backupError}
               <button
                 className="text-button"
-                onClick={() =>
-                  void navigate(() => {
-                    setEditing(null);
-                    setScreen("settings");
-                    setSettingsTab("updates");
-                  })
-                }
+                onClick={() => setBackupError("")}
               >
-                查看更新
-                <ArrowUpRight size={15} />
+                重试目录备份
               </button>
-              <button
-                className="icon-button"
-                aria-label="关闭此版本提醒"
-                title="关闭此版本提醒"
-                onClick={() =>
-                  void dismissUpdate(update.release!.version).catch((e) =>
-                    setError(messageOf(e)),
-                  )
-                }
-              >
-                <X size={17} />
-              </button>
-            </div>
+            </Alert>
           )}
-        {error && <Alert>{error}</Alert>}
-        {backupError && (
-          <Alert>
-            {backupError}
-            <button className="text-button" onClick={() => setBackupError("")}>
-              重试目录备份
-            </button>
-          </Alert>
-        )}
+          <Suspense
+            fallback={
+              <div className="page-loading" role="status">
+                正在打开工作区…
+              </div>
+            }
+          >
+            {editing ? (
+              <EditorPage
+                key={editing.id}
+                initial={editing}
+                isNew={editing.id === newDraftId}
+                defaultViewMode={preferences.editorLayout}
+                onFlushReady={onFlushReady}
+                onBack={() => setEditing(null)}
+                onOpenCopy={setEditing}
+                onQueue={() => {
+                  setEditing(null);
+                  setScreen("queue");
+                }}
+              />
+            ) : screen === "library" ? (
+              <LibraryPage
+                view={libraryView}
+                onViewChange={setLibraryView}
+                onOpen={(article) => {
+                  setNewDraftId(null);
+                  setEditing(article);
+                }}
+                onCreate={(sample) => void create(sample)}
+              />
+            ) : screen === "queue" ? (
+              <QueuePage />
+            ) : screen === "data" ? (
+              <DataPage />
+            ) : (
+              <SettingsPage
+                preferences={preferences}
+                tab={settingsTab}
+                onTabChange={setSettingsTab}
+              />
+            )}
+          </Suspense>
+        </main>
+      </div>
+      {installation && (
         <Suspense
           fallback={
             <div className="page-loading" role="status">
-              正在打开工作区…
+              正在打开更新状态…
             </div>
           }
         >
-          {editing ? (
-            <EditorPage
-              key={editing.id}
-              initial={editing}
-              isNew={editing.id === newDraftId}
-              defaultViewMode={preferences.editorLayout}
-              onFlushReady={onFlushReady}
-              onBack={() => setEditing(null)}
-              onOpenCopy={setEditing}
-              onQueue={() => {
-                setEditing(null);
-                setScreen("queue");
-              }}
-            />
-          ) : screen === "library" ? (
-            <LibraryPage
-              view={libraryView}
-              onViewChange={setLibraryView}
-              onOpen={(article) => {
-                setNewDraftId(null);
-                setEditing(article);
-              }}
-              onCreate={(sample) => void create(sample)}
-            />
-          ) : screen === "queue" ? (
-            <QueuePage />
-          ) : screen === "data" ? (
-            <DataPage />
-          ) : (
-            <SettingsPage
-              preferences={preferences}
-              tab={settingsTab}
-              onTabChange={setSettingsTab}
-            />
-          )}
+          <UpdateOverlay installation={installation} />
         </Suspense>
-      </main>
-    </div>
+      )}
+    </>
   );
 }
