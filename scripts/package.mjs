@@ -49,7 +49,8 @@ for (const [path, info] of Object.entries(lock.packages)) {
 }
 const licenseText = `${await readFile(join(root, "THIRD_PARTY_NOTICES.md"), "utf8")}\n\n${await readFile(join(root, "docs/licenses/Apache-2.0.txt"), "utf8")}\n\n# Installed production dependency licenses\n\n${notices.join("\n\n---\n\n")}`;
 await writeFile(join(dist, "THIRD_PARTY_LICENSES.txt"), licenseText);
-const extensionRoot = join(root, ".output", "edge-mv3");
+// Keep release packaging separate from the user's currently loaded directory.
+const extensionRoot = resolve(root, process.argv[2] ?? ".output/edge-mv3");
 const manifest = JSON.parse(
   await readFile(join(extensionRoot, "manifest.json"), "utf8"),
 );
@@ -89,6 +90,7 @@ for (const name of [
   "vite.preview.config.ts",
   "index.html",
   "README.md",
+  "README.en.md",
   "LICENSE",
   "CHANGELOG.md",
   "CONTRIBUTING.md",

@@ -3,6 +3,7 @@ import { X, AlertCircle } from "lucide-react";
 import type { ChannelId } from "../core/model";
 import { channelFor } from "../platforms/catalog";
 import { isExtension } from "../platforms/browser-adapter";
+import { sendWorkbenchCommand } from "../core/commands";
 export const timeLabel = (time?: number) =>
   time
     ? new Date(time).toLocaleString("zh-CN", {
@@ -137,8 +138,5 @@ export function useBlobUrl(blob?: Blob) {
 export async function command(message: unknown) {
   if (!isExtension())
     throw new Error("这是本地界面预览。请在 Edge 中加载扩展后操作平台。");
-  const response = await chrome.runtime.sendMessage(message);
-  if (!response?.ok)
-    throw new Error(response?.error ?? "后台没有响应，请重新加载扩展。");
-  return response;
+  return sendWorkbenchCommand(message);
 }

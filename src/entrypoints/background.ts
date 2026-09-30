@@ -11,6 +11,11 @@ import {
 } from "../core/model";
 import { refreshPost } from "../core/collection";
 import { z } from "zod";
+import { MANUAL_PUBLISH_PROTOCOL } from "../core/commands";
+import {
+  handleCnblogsGuardMessage,
+  removeCnblogsGuard,
+} from "../platforms/cnblogs-guard";
 import {
   checkForUpdates,
   syncUpdateAlarm,
@@ -20,9 +25,14 @@ import {
 } from "../core/updates";
 
 const command = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("capabilities") }),
   z.object({ type: z.literal("checkUpdates"), manual: z.boolean().optional() }),
   z.object({ type: z.literal("configureUpdates") }),
-  z.object({ type: z.literal("run"), ids: z.array(z.string()).max(100) }),
+  z.object({
+    type: z.literal("run"),
+    ids: z.array(z.string()).max(100),
+    manualPublishProtocol: z.literal(MANUAL_PUBLISH_PROTOCOL),
+  }),
   z.object({ type: z.literal("pause") }),
   z.object({ type: z.literal("probe"), channel: z.enum(channelIds) }),
   z.object({ type: z.literal("verify"), id: z.string() }),
@@ -33,6 +43,9 @@ const command = z.discriminatedUnion("type", [
   }),
 ]);
 export default defineBackground(() => {
+  chrome.tabs.onRemoved.addListener((tabId) => {
+    void removeCnblogsGuard(tabId).catch(() => {});
+  });
   const automaticUpdateCheck = async () => {
     try {
       await syncUpdateAlarm();
@@ -193,6 +206,17 @@ export default defineBackground(() => {
   }
   chrome.runtime.onMessage.addListener((raw: unknown, sender, sendResponse) => {
     if (
+      raw &&
+      typeof raw === "object" &&
+      "type" in raw &&
+      ["cnblogsGuardStatus", "cnblogsGuardRelease"].includes(String(raw.type))
+    ) {
+      void handleCnblogsGuardMessage(raw, sender).then(sendResponse, (error) =>
+        sendResponse({ ok: false, error: messageOf(error) }),
+      );
+      return true;
+    }
+    if (
       sender.id !== chrome.runtime.id ||
       !sender.url?.startsWith(chrome.runtime.getURL("/workbench.html"))
     )
@@ -204,6 +228,12 @@ export default defineBackground(() => {
     }
     const request = parsed.data;
     void (async () => {
+      if (request.type === "capabilities")
+        return {
+          ok: true,
+          manualPublishProtocol: MANUAL_PUBLISH_PROTOCOL,
+          version: chrome.runtime.getManifest().version,
+        };
       if (request.type === "checkUpdates") {
         await checkForUpdates({ manual: request.manual });
         return { ok: true };

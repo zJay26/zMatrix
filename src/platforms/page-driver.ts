@@ -24,6 +24,7 @@ export interface PageRequest {
   content?: PreparedContent;
   cursor?: string;
   remoteId?: string;
+  protectedCnblogs?: boolean;
 }
 export interface PageResult {
   ok: boolean;
@@ -73,6 +74,17 @@ export async function pageDriver(request: PageRequest): Promise<PageResult> {
       throw new Error("标签页已离开目标平台，操作停止。");
     if (request.action === "publish")
       throw new Error("自动发布已禁用。请在原站手动完成最终发布。");
+    if (platform === "cnblogs") {
+      if (request.action === "save")
+        throw new Error("博客园保存草稿需由用户在原站手动点击。");
+      if (
+        ["fill", "prepare-publish"].includes(request.action) &&
+        (!request.protectedCnblogs ||
+          location.origin !== "https://i.cnblogs.com" ||
+          location.pathname !== "/posts/edit")
+      )
+        throw new Error("博客园仅允许在受保护的新建编辑页填充，已停止操作。");
+    }
     const visible = (e: Element) => {
       if (
         !(e as HTMLElement).getClientRects().length ||

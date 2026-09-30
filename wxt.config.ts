@@ -22,7 +22,13 @@ export default defineConfig({
       48: "icon/48.png",
       128: "icon/128.png",
     },
-    permissions: ["storage", "scripting", "unlimitedStorage", "alarms"],
+    permissions: [
+      "storage",
+      "scripting",
+      "unlimitedStorage",
+      "alarms",
+      "declarativeNetRequestWithHostAccess",
+    ],
     host_permissions: ["https://api.github.com/*"],
     optional_host_permissions: [
       "https://*.zhihu.com/*",

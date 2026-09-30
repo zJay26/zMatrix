@@ -24,6 +24,7 @@ export function PublishDialog({
   onClose: () => void;
   onCreated: () => void;
 }) {
+  const available = channels.filter((channel) => !channel.manual);
   const [selected, setSelected] = useState<ChannelId[]>([]);
   const [mode, setMode] = useState<Mode>("draft");
   const [busy, setBusy] = useState(false);
@@ -34,6 +35,7 @@ export function PublishDialog({
   const [active, setActive] = useState(0);
   useEffect(() => {
     setPrepared([]);
+    setError("");
   }, [selected, mode]);
   const preview = async () => {
     setBusy(true);
@@ -78,6 +80,7 @@ export function PublishDialog({
       <div className="publish-options">
         <div className="mode-switch">
           <button
+            disabled={busy}
             className={mode === "draft" ? "selected" : ""}
             onClick={() => setMode("draft")}
           >
@@ -85,11 +88,34 @@ export function PublishDialog({
             保存草稿
           </button>
           <button
+            disabled={busy}
             className={mode === "publish" ? "selected" : ""}
             onClick={() => setMode("publish")}
           >
             <Send size={17} />
             准备发布，手动确认
+          </button>
+        </div>
+        <div className="publish-selection-bar">
+          <span>
+            发布平台{" "}
+            <span className="muted">
+              已选 {selected.length} / {available.length}
+            </span>
+          </span>
+          <button
+            type="button"
+            className="text-button"
+            disabled={busy}
+            onClick={() =>
+              setSelected(
+                selected.length === available.length
+                  ? []
+                  : available.map((channel) => channel.id),
+              )
+            }
+          >
+            {selected.length === available.length ? "取消全选" : "全选"}
           </button>
         </div>
         <div className="target-grid">
@@ -102,6 +128,7 @@ export function PublishDialog({
               >
                 <input
                   type="checkbox"
+                  disabled={busy}
                   checked={selected.includes(c.id)}
                   onChange={(e) =>
                     setSelected(
@@ -112,11 +139,16 @@ export function PublishDialog({
                   }
                 />
                 <i style={{ background: c.color }} />
-                {c.name}
+                <span>{c.name}</span>
               </label>
             ))}
         </div>
       </div>
+      {selected.includes("cnblogs:article") && (
+        <p className="muted">
+          博客园会自动填入内容；发布和保存草稿都需你在原站亲自点击。
+        </p>
+      )}
       {error && <Alert>{error}</Alert>}
       {!!prepared.length && (
         <div className="publish-preview">

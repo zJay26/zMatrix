@@ -16,7 +16,7 @@ import { diffLines } from "diff";
 import { db, changed, saveArticle, saveVariant } from "../core/db";
 import { SaveQueue } from "../core/autosave";
 import { copyDraft } from "../core/library";
-import { channelFor, channels } from "../platforms/catalog";
+import { channels } from "../platforms/catalog";
 import {
   clearOverride,
   freezeSnapshot,
@@ -39,6 +39,7 @@ import { MarkdownEditor, MarkdownPreview } from "./Markdown";
 import { Modal, Alert, PlatformPill, useBlobUrl } from "./shared";
 import { CardStudio } from "./CardStudio";
 import { PublishDialog } from "./PublishDialog";
+import { MetadataFields, type MetadataHandle } from "./MetadataFields";
 
 function AssetThumbnail({
   asset,
@@ -114,6 +115,7 @@ export function EditorPage({
   const [publish, setPublish] = useState(false);
   const [showDiff, setShowDiff] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
+  const metadataEditor = useRef<MetadataHandle>(null);
   const variants = {
     ...Object.fromEntries(stored.map((v) => [v.channel, v])),
     ...localVariants,
@@ -213,6 +215,7 @@ export function EditorPage({
     uploads.current.add(job);
   };
   const flush = async () => {
+    metadataEditor.current?.flush();
     while (uploads.current.size) await Promise.all([...uploads.current]);
     return saveQueue.flush();
   };
@@ -221,6 +224,7 @@ export function EditorPage({
       if (
         saveQueue.status.pending ||
         saveQueue.status.error ||
+        metadataEditor.current?.hasPending() ||
         uploads.current.size
       ) {
         event.preventDefault();
@@ -413,50 +417,17 @@ export function EditorPage({
         )}
       </div>
       {variant && (
-        <div className="metadata-row">
-          <label>
-            分类
-            <input
-              placeholder="平台要求的分类名称"
-              value={variant.metadata.category}
-              onChange={(e) =>
-                putVariant({
-                  ...variant,
-                  metadata: { ...variant.metadata, category: e.target.value },
-                })
-              }
-            />
-          </label>
-          <label>
-            标签
-            <input
-              placeholder="用英文逗号分隔"
-              value={variant.metadata.tags.join(",")}
-              onChange={(e) =>
-                putVariant({
-                  ...variant,
-                  metadata: {
-                    ...variant.metadata,
-                    tags: e.target.value.split(",").map((s) => s.trim()),
-                  },
-                })
-              }
-            />
-          </label>
-          <label className="summary-field">
-            摘要
-            <input
-              placeholder="按需填写平台摘要"
-              value={variant.metadata.summary}
-              onChange={(e) =>
-                putVariant({
-                  ...variant,
-                  metadata: { ...variant.metadata, summary: e.target.value },
-                })
-              }
-            />
-          </label>
-        </div>
+        <MetadataFields
+          key={variant.channel}
+          ref={metadataEditor}
+          channel={variant.channel}
+          metadata={variant.metadata}
+          markdown={content.markdown}
+          onChange={(update) => {
+            const current = currentVariant(variant.channel);
+            putVariant({ ...current, metadata: update(current.metadata) });
+          }}
+        />
       )}
       {selected === "linuxdo:topic" && (
         <div className="manual-tools">

@@ -12,16 +12,16 @@ describe("手动发布交接", () => {
         {
           result: {
             ok: true,
-            url: "https://i.cnblogs.com/posts/edit/42",
+            url: "https://juejin.cn/editor/drafts/42",
             readyToPublish: ready,
             preparationDetail: "核对记录",
           },
         },
       ]);
       vi.stubGlobal("chrome", { scripting: { executeScript } });
-      const f = await fixture("cnblogs:article");
-      const result = await adapterFor("cnblogs:article").preparePublish(
-        { channel: "cnblogs:article", taskId: "task", tabId: 5 },
+      const f = await fixture("juejin:article");
+      const result = await adapterFor("juejin:article").preparePublish(
+        { channel: "juejin:article", taskId: "task", tabId: 5 },
         f.snapshot,
         f.prepared,
       );
@@ -35,30 +35,36 @@ describe("手动发布交接", () => {
       );
     },
   );
-  it("核实手动发布结果时不刷新尚未提交的原站页面", async () => {
-    const executeScript = vi.fn().mockResolvedValue([
-      {
-        result: {
-          ok: true,
-          url: "https://i.cnblogs.com/posts/edit/42",
-          draftId: "42",
-          title: "本地验收稿",
-          body: "正文",
-          images: 0,
+  it.each(["publish", "draft"] as const)(
+    "博客园核实 %s 结果不刷新或提交原站页面",
+    async (mode) => {
+      const executeScript = vi.fn().mockResolvedValue([
+        {
+          result: {
+            ok: true,
+            url: "https://i.cnblogs.com/posts/edit/42",
+            draftId: "42",
+            title: "本地验收稿",
+            body: "正文",
+            images: 0,
+          },
         },
-      },
-    ]);
-    const reload = vi.fn();
-    vi.stubGlobal("chrome", { scripting: { executeScript }, tabs: { reload } });
-    const f = await fixture("cnblogs:article");
-    const receipt = await adapterFor("cnblogs:article").verify(
-      { channel: "cnblogs:article", taskId: "task", tabId: 5 },
-      f.snapshot,
-      f.prepared,
-      "publish",
-    );
-    expect(receipt.status).toBe("uncertain");
-    expect(reload).not.toHaveBeenCalled();
-    expect(executeScript).toHaveBeenCalledTimes(1);
-  });
+      ]);
+      const reload = vi.fn();
+      vi.stubGlobal("chrome", {
+        scripting: { executeScript },
+        tabs: { reload },
+      });
+      const f = await fixture("cnblogs:article");
+      const receipt = await adapterFor("cnblogs:article").verify(
+        { channel: "cnblogs:article", taskId: "task", tabId: 5 },
+        f.snapshot,
+        f.prepared,
+        mode,
+      );
+      expect(receipt.status).toBe("uncertain");
+      expect(reload).not.toHaveBeenCalled();
+      expect(executeScript).toHaveBeenCalledTimes(1);
+    },
+  );
 });

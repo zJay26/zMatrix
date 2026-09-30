@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="zh-CN">
+  <meta charset="utf-8" />
+  <title>博客园发布交接回归测试</title>
+  <style>
+    body {
+      font: 18px/1.7 sans-serif;
+      margin: 48px;
+      max-width: 800px;
+    }
+    button,
+    input {
+      padding: 10px 16px;
+      margin: 8px;
+      font: inherit;
+    }
+    pre {
+      background: #f1f5f9;
+      padding: 20px;
+    }
+  </style>
+  <h1>博客园发布交接回归测试</h1>
+  <p>
+    仅测试真实点击事件与交接顺序。所有后台响应均为本地模拟，不连接博客园，不代表浏览器网络规则已验收。
+  </p>
+  <label><input id="reject" type="checkbox" />模拟后台交接失败</label>
+  <button id="synthetic">脚本尝试点击发布</button>
+  <form><button id="publish" type="submit">发布</button></form>
+  <pre id="result"></pre>
+  <script type="module">
+    import { installCnblogsHandoff } from "../../src/platforms/cnblogs-handoff.ts";
+    const result = {
+      releaseRequests: 0,
+      acceptedClicks: 0,
+      submitted: 0,
+      protected: true,
+    };
+    const render = () => {
+      document.querySelector("#result").textContent = JSON.stringify(
+        result,
+        null,
+        2,
+      );
+    };
+    window.chrome = {
+      runtime: {
+        onMessage: { addListener() {}, removeListener() {} },
+        async sendMessage(message) {
+          if (message.type === "cnblogsGuardStatus")
+            return { ok: true, guard: { token: "local-test", phase: "ready" } };
+          result.releaseRequests++;
+          if (document.querySelector("#reject").checked) {
+            render();
+            return { ok: false, error: "模拟后台失败：保护仍开启" };
+          }
+          result.protected = false;
+          render();
+          return { ok: true };
+        },
+      },
+    };
+    installCnblogsHandoff();
+    document.querySelector("#synthetic").onclick = () =>
+      document.querySelector("#publish").click();
+    document.querySelector("#publish").onclick = () => {
+      result.acceptedClicks++;
+      render();
+    };
+    document.querySelector("form").onsubmit = (event) => {
+      event.preventDefault();
+      result.submitted++;
+      render();
+    };
+    render();
+  </script>
+</html>

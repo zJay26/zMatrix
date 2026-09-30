@@ -32,33 +32,35 @@ describe("平台页面保护", () => {
     },
   );
   it("准备发布核对内容后停在最终按钮前，不触发 click 或 submit", async () => {
+    vi.stubGlobal("location", new URL("https://juejin.cn/editor/drafts/42"));
     document.body.innerHTML =
-      '<form><input id="post-title" value="本地验收稿"><textarea id="md-editor">正文</textarea><button type="submit">发布</button></form>';
+      '<form><input class="title-input" value="本地验收稿"><textarea class="CodeMirror">正文</textarea><button type="submit">发布</button></form>';
     const click = vi.fn();
     const submit = vi.fn();
     document.querySelector("button")!.onclick = click;
     document.querySelector("form")!.onsubmit = submit;
-    const f = await fixture("cnblogs:article");
+    const f = await fixture("juejin:article");
     f.snapshot.metadata.tags = [];
     const result = await pageDriver({
       action: "prepare-publish",
-      channel: "cnblogs:article",
+      channel: "juejin:article",
       snapshot: f.snapshot,
       content: f.prepared,
     });
-    expect(result).toMatchObject({ ok: true, readyToPublish: true });
+    expect(result).toMatchObject({ ok: true, readyToPublish: false });
     expect(click).not.toHaveBeenCalled();
     expect(submit).not.toHaveBeenCalled();
   });
   it("正文一致但分类、封面或必填项未核对时，不宣称已到最终发布步骤", async () => {
+    vi.stubGlobal("location", new URL("https://juejin.cn/editor/drafts/42"));
     document.body.innerHTML =
-      '<input id="post-title" value="本地验收稿"><textarea id="md-editor">正文</textarea><input required value=""><button>发布</button>';
-    const f = await fixture("cnblogs:article");
+      '<input class="title-input" value="本地验收稿"><textarea class="CodeMirror">正文</textarea><input required value=""><button>发布</button>';
+    const f = await fixture("juejin:article");
     f.snapshot.metadata.coverId = "a".repeat(64);
     f.snapshot.metadata.category = "技术";
     const result = await pageDriver({
       action: "prepare-publish",
-      channel: "cnblogs:article",
+      channel: "juejin:article",
       snapshot: f.snapshot,
       content: f.prepared,
     });
@@ -124,12 +126,13 @@ describe("平台页面保护", () => {
     ).toBe(true);
   });
   it("编辑器恢复了其他稿件时不覆盖原内容", async () => {
+    vi.stubGlobal("location", new URL("https://juejin.cn/editor/drafts/42"));
     document.body.innerHTML =
-      '<input id="post-title" value="已有稿"><textarea id="md-editor">我的正文</textarea>';
-    const f = await fixture("cnblogs:article");
+      '<input class="title-input" value="已有稿"><textarea class="CodeMirror">我的正文</textarea>';
+    const f = await fixture("juejin:article");
     const result = await pageDriver({
       action: "fill",
-      channel: "cnblogs:article",
+      channel: "juejin:article",
       snapshot: f.snapshot,
       content: f.prepared,
       taskId: "test",
@@ -140,16 +143,17 @@ describe("平台页面保护", () => {
     ).toBe("我的正文");
   });
   it("最终按钮不唯一时停止，不根据文字猜测点击", async () => {
+    vi.stubGlobal("location", new URL("https://juejin.cn/editor/drafts/42"));
     document.body.innerHTML =
-      '<input id="post-title" value="本地验收稿"><textarea id="md-editor">正文</textarea><button>发布</button><button>发布</button>';
-    const f = await fixture("cnblogs:article");
+      '<input class="title-input" value="本地验收稿"><textarea class="CodeMirror">正文</textarea><button>发布</button><button>发布</button>';
+    const f = await fixture("juejin:article");
     const click = vi.fn();
     document
       .querySelectorAll("button")
       .forEach((button) => (button.onclick = click));
     const result = await pageDriver({
       action: "prepare-publish",
-      channel: "cnblogs:article",
+      channel: "juejin:article",
       snapshot: f.snapshot,
       content: f.prepared,
     });

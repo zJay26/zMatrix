@@ -1,5 +1,12 @@
 import { channelFor, parseRemoteUrl } from "./catalog";
 import { pageDriver, type PageRequest, type PageResult } from "./page-driver";
+import { readPageCategories } from "./metadata";
+import {
+  armCnblogsHandoff,
+  protectCnblogsTab,
+  requireCnblogsGuard,
+} from "./cnblogs-guard";
+import { cnblogsHandoffToken } from "./cnblogs-handoff";
 import type { Context, PlatformAdapter, Receipt } from "./interface";
 import type {
   ChannelId,
@@ -25,6 +32,43 @@ async function requirePermission(channel: ChannelId) {
     }))
   )
     throw new Error("请先在平台设置中连接此平台。");
+}
+export async function readCategoryCandidates(
+  channel: ChannelId,
+): Promise<string[]> {
+  await requirePermission(channel);
+  const tabs = await chrome.tabs.query({ url: channelFor(channel).origins });
+  const allowedHosts: Record<string, string[]> = {
+    csdn: ["editor.csdn.net", "mp.csdn.net"],
+    cnblogs: ["i.cnblogs.com"],
+    linuxdo: ["linux.do"],
+  };
+  const eligible = tabs
+    .filter((tab) => {
+      if (!tab.id || !tab.url) return false;
+      try {
+        return allowedHosts[channel.split(":")[0]!]?.includes(
+          new URL(tab.url).hostname,
+        );
+      } catch {
+        return false;
+      }
+    })
+    .sort((a, b) => Number(b.active) - Number(a.active));
+  if (!eligible.length)
+    throw new Error("请先打开原站编辑页并展开分类选项，再回来读取。");
+  for (const tab of eligible) {
+    const results = await chrome.scripting.executeScript({
+      target: { tabId: tab.id! },
+      func: readPageCategories,
+      args: [channel],
+    });
+    const names = results[0]?.result;
+    if (names?.length) return names;
+  }
+  throw new Error(
+    "未识别到可见的分类选项。请在原站展开分类列表后重试，或直接在原站设置。",
+  );
 }
 async function ready(tabId: number) {
   const end = Date.now() + 25000;
@@ -77,6 +121,7 @@ export function matchesContent(
 }
 export function adapterFor(channel: ChannelId): PlatformAdapter {
   const spec = channelFor(channel);
+  const cnblogs = channel === "cnblogs:article";
   async function open(url: string, active: boolean) {
     await requirePermission(channel);
     const tab = await chrome.tabs.create({ url, active });
@@ -203,8 +248,42 @@ export function adapterFor(channel: ChannelId): PlatformAdapter {
     },
     async prepare(snapshot, content, taskId, onTab) {
       if (spec.manual) throw new Error("LINUX DO 请使用人工发布辅助。");
-      const tabId = await open(spec.editorUrl, true);
-      await onTab(tabId);
+      let tabId: number;
+      if (cnblogs) {
+        await requirePermission(channel);
+        const tab = await chrome.tabs.create({
+          url: "about:blank",
+          active: true,
+        });
+        if (tab.id === undefined) throw new Error("无法创建平台标签页");
+        tabId = tab.id;
+        await onTab(tabId);
+        const guard = await protectCnblogsTab(tabId, taskId);
+        await chrome.tabs.update(tabId, { url: spec.editorUrl });
+        await ready(tabId);
+        await requireCnblogsGuard(tabId, taskId);
+        let listenerReady = false;
+        const until = Date.now() + 5000;
+        while (Date.now() < until) {
+          const listener = await chrome.scripting.executeScript({
+            target: { tabId },
+            world: "ISOLATED",
+            func: cnblogsHandoffToken,
+          });
+          if (listener[0]?.result === guard.token) {
+            listenerReady = true;
+            break;
+          }
+          await delay(100);
+        }
+        if (!listenerReady)
+          throw new Error(
+            "博客园发布保护尚未就绪。请先确认原站已登录，再新建任务重试。",
+          );
+      } else {
+        tabId = await open(spec.editorUrl, true);
+        await onTab(tabId);
+      }
       const probe = await callPage(tabId, { action: "probe", channel });
       if (probe.problems?.length) throw new Error(probe.problems.join("；"));
       await callPage(tabId, {
@@ -213,10 +292,20 @@ export function adapterFor(channel: ChannelId): PlatformAdapter {
         snapshot,
         content,
         taskId,
+        protectedCnblogs: cnblogs,
       });
       return { channel, taskId, tabId };
     },
     async saveDraft(context, snapshot, content) {
+      if (cnblogs) {
+        await armCnblogsHandoff(context.tabId, context.taskId);
+        return {
+          status: "awaiting_review",
+          editorUrl: (await chrome.tabs.get(context.tabId)).url,
+          detail:
+            "博客园内容已填充，发布保护保持开启。请在原站亲自点击“存为草稿”，再核实结果。尚未保存草稿。",
+        };
+      }
       const result = await callPage(context.tabId, {
         action: "save",
         channel,
@@ -232,12 +321,15 @@ export function adapterFor(channel: ChannelId): PlatformAdapter {
       return inspect(context, snapshot, content, true);
     },
     async preparePublish(context, snapshot, content) {
+      if (cnblogs) await requireCnblogsGuard(context.tabId, context.taskId);
       const preparation = await callPage(context.tabId, {
         action: "prepare-publish",
         channel,
         snapshot,
         content,
+        protectedCnblogs: cnblogs,
       });
+      if (cnblogs) await armCnblogsHandoff(context.tabId, context.taskId);
       return {
         status: preparation.readyToPublish
           ? "awaiting_publish"
@@ -249,7 +341,7 @@ export function adapterFor(channel: ChannelId): PlatformAdapter {
       };
     },
     verify: (context, snapshot, content, mode = "draft") =>
-      inspect(context, snapshot, content, mode === "draft"),
+      inspect(context, snapshot, content, mode === "draft" && !cnblogs),
     async fetchMetrics(post) {
       return read(post, async (tabId) => {
         const data = await callPage(tabId, {
