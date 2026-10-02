@@ -2,6 +2,7 @@ import { db } from "./db";
 
 export const PREFERENCES_KEY = "preferences";
 export const defaultPreferences = {
+  theme: "system" as "system" | "light" | "dark",
   fontSize: 16,
   editorFontSize: 17,
   libraryLayout: "grid" as "grid" | "list",
@@ -28,6 +29,10 @@ export function normalizePreferences(value: unknown): Preferences {
       : defaultPreferences[key];
   };
   return {
+    theme:
+      source.theme === "light" || source.theme === "dark"
+        ? source.theme
+        : "system",
     fontSize: size("fontSize", 14, 22),
     editorFontSize: size("editorFontSize", 14, 26),
     libraryLayout: source.libraryLayout === "list" ? "list" : "grid",

@@ -5,6 +5,7 @@ import {
   type Article,
   type ChannelId,
   type Content,
+  type Metadata,
   type Snapshot,
   type Variant,
 } from "./model";
@@ -38,6 +39,18 @@ export function resolveContent(article: Article, variant?: Variant): Content {
     title: variant?.overrides.title ?? article.title,
     markdown: variant?.overrides.markdown ?? article.markdown,
     imageIds: [...(variant?.overrides.imageIds ?? article.imageIds)],
+  };
+}
+// A platform keeps its own value once it has one; empty fields follow the master.
+export function resolveMetadata(article: Article, variant?: Variant): Metadata {
+  const own = variant?.metadata ?? emptyMetadata();
+  const shared = article.defaults;
+  const coverId = own.coverId ?? shared?.coverId;
+  return {
+    ...own,
+    tags: own.tags.length ? [...own.tags] : [...(shared?.tags ?? [])],
+    summary: own.summary || shared?.summary || "",
+    ...(coverId ? { coverId } : {}),
   };
 }
 export function setOverride<K extends keyof Content>(
@@ -85,7 +98,7 @@ export async function freezeSnapshot(
   variant: Variant,
 ): Promise<Snapshot> {
   const content = resolveContent(article, variant);
-  const metadata = clone(variant.metadata);
+  const metadata = clone(resolveMetadata(article, variant));
   metadata.tags = metadata.tags.map((t) => t.trim()).filter(Boolean);
   return {
     ...content,
@@ -108,6 +121,6 @@ export function snapshotDiffers(
     snapshot.markdown !== current.markdown ||
     JSON.stringify(snapshot.imageIds) !== JSON.stringify(current.imageIds) ||
     JSON.stringify(snapshot.metadata) !==
-      JSON.stringify(variant?.metadata ?? emptyMetadata())
+      JSON.stringify(resolveMetadata(article, variant))
   );
 }

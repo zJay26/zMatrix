@@ -24,6 +24,12 @@ export interface Content {
   markdown: string;
   imageIds: string[];
 }
+// Publishing details written once on the master and inherited by every platform.
+export interface SharedMetadata {
+  tags: string[];
+  summary: string;
+  coverId?: string;
+}
 export interface Article extends Content {
   id: string;
   revision: number;
@@ -31,6 +37,7 @@ export interface Article extends Content {
   updatedAt: number;
   archived: boolean;
   trashedAt?: number;
+  defaults?: SharedMetadata;
 }
 export interface Metadata {
   tags: string[];

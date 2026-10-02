@@ -75,7 +75,7 @@ async function renderApp() {
   await act(async () => root.render(h(App)));
   await vi.waitFor(async () => {
     await settle();
-    expect(container.textContent).toContain("我的内容库");
+    expect(container.textContent).toContain("总览");
   });
 }
 async function newDraft() {
@@ -174,15 +174,10 @@ describe("精简工作流界面", () => {
       expect(container.querySelector(".article-link")).not.toBeNull();
     });
     await click(container.querySelector<HTMLButtonElement>(".article-link")!);
-    await click(button("发布预览"));
+    await click(button("分发到平台"));
     await vi.waitFor(async () => {
       await settle();
-      expect(button("检查并预览").disabled).toBe(false);
-    });
-    await click(button("检查并预览"));
-    await vi.waitFor(async () => {
-      await settle();
-      expect(container.textContent).toContain("加入队列，稍后执行");
+      expect(button("加入队列，稍后执行").disabled).toBe(false);
     });
     await click(button("加入队列，稍后执行"));
     await vi.waitFor(async () => {
@@ -193,7 +188,7 @@ describe("精简工作流界面", () => {
       "zhihu:article",
     ]);
   });
-  it("缺失字段在发布面板补齐，未回车标签保存后可排队并从界面取消移除", async () => {
+  it("缺失字段在分发面板补齐，未回车的标签直接排队也会保存，并可从界面取消移除", async () => {
     await fixture(undefined, db);
     await renderApp();
     await vi.waitFor(async () => {
@@ -201,7 +196,7 @@ describe("精简工作流界面", () => {
       expect(container.querySelector(".article-link")).not.toBeNull();
     });
     await click(container.querySelector<HTMLButtonElement>(".article-link")!);
-    await click(button("发布预览"));
+    await click(button("分发到平台"));
     await vi.waitFor(async () => {
       await settle();
       expect(
@@ -216,7 +211,6 @@ describe("精简工作流界面", () => {
         .querySelector("input")!,
     );
     await click(button("准备发布，手动确认"));
-    await click(button("检查并预览"));
     await vi.waitFor(async () => {
       await settle();
       expect(container.textContent).toContain("请填写标签");
@@ -229,19 +223,17 @@ describe("精简工作流界面", () => {
         )!,
       "发布测试",
     );
-    await click(button("检查并预览"));
-    await vi.waitFor(async () => {
-      await settle();
-      expect(container.textContent).toContain("加入队列，稍后执行");
-    });
-    expect((await db.variants.toArray())[0]?.metadata.tags).toEqual([
-      "发布测试",
-    ]);
     await click(button("加入队列，稍后执行"));
     await vi.waitFor(async () => {
       await settle();
       expect(container.textContent).toContain("取消并移除");
     });
+    expect((await db.variants.toArray())[0]?.metadata.tags).toEqual([
+      "发布测试",
+    ]);
+    expect((await db.tasks.toArray())[0]?.snapshot.metadata.tags).toEqual([
+      "发布测试",
+    ]);
     await click(button("取消并移除"));
     await click(button("确认移除"));
     await vi.waitFor(async () => {
@@ -249,5 +241,46 @@ describe("精简工作流界面", () => {
       expect(await db.tasks.count()).toBe(0);
     });
     expect(await db.articles.count()).toBe(1);
+  });
+  it("通用标签在分发面板填一次，所选平台全部使用，平台自身不重复保存", async () => {
+    await fixture(undefined, db);
+    await renderApp();
+    await vi.waitFor(async () => {
+      await settle();
+      expect(container.querySelector(".article-link")).not.toBeNull();
+    });
+    await click(container.querySelector<HTMLButtonElement>(".article-link")!);
+    await click(button("分发到平台"));
+    await vi.waitFor(async () => {
+      await settle();
+      expect(button("全选").disabled).toBe(false);
+    });
+    await click(button("全选"));
+    await input(
+      container
+        .querySelector<HTMLDivElement>('[role="dialog"]')!
+        .querySelector<HTMLInputElement>(
+          'input[placeholder="输入标签，回车添加"]',
+        )!,
+      "一次填写",
+    );
+    await click(button("加入队列，稍后执行"));
+    await vi.waitFor(async () => {
+      await settle();
+      expect(await db.tasks.count()).toBe(6);
+    });
+    expect((await db.articles.toArray())[0]?.defaults?.tags).toEqual([
+      "一次填写",
+    ]);
+    for (const task of await db.tasks.toArray())
+      expect(task.snapshot.metadata.tags).toEqual(["一次填写"]);
+    for (const variant of await db.variants.toArray())
+      expect(variant.metadata.tags).toEqual([]);
+    // Every platform of one distribution is shown under a single article card.
+    await vi.waitFor(async () => {
+      await settle();
+      expect(container.querySelectorAll(".task-card")).toHaveLength(1);
+      expect(container.querySelectorAll(".task-row")).toHaveLength(6);
+    });
   });
 });

@@ -61,6 +61,7 @@ export function filterLibrary(entries: LibraryEntry[], filter: LibraryFilter) {
       const text = [
         article.title,
         article.markdown,
+        ...(article.defaults?.tags ?? []),
         ...variants.flatMap((v) => [
           v.overrides.title ?? "",
           ...v.metadata.tags,
@@ -115,6 +116,7 @@ export async function copyDraft(
   const copy = {
     ...newArticle(`${article.title || "未命名稿件"} · 副本`, article.markdown),
     imageIds: [...article.imageIds],
+    ...(article.defaults ? { defaults: clone(article.defaults) } : {}),
   };
   await database.transaction(
     "rw",

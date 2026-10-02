@@ -4,6 +4,7 @@ export interface Channel {
   platform: PlatformId;
   name: string;
   short: string;
+  glyph: string;
   color: string;
   editorUrl: string;
   homeUrl: string;
@@ -21,6 +22,7 @@ export const channels: Channel[] = [
     platform: "zhihu",
     name: "知乎 · 文章",
     short: "知乎",
+    glyph: "知",
     color: "#1768d5",
     editorUrl: "https://zhuanlan.zhihu.com/write",
     homeUrl: "https://www.zhihu.com/creator",
@@ -37,6 +39,7 @@ export const channels: Channel[] = [
     platform: "juejin",
     name: "掘金 · 文章",
     short: "掘金",
+    glyph: "掘",
     color: "#356beb",
     editorUrl: "https://juejin.cn/editor/drafts/new",
     homeUrl: "https://juejin.cn/creator",
@@ -53,6 +56,7 @@ export const channels: Channel[] = [
     platform: "cnblogs",
     name: "博客园 · 文章",
     short: "博客园",
+    glyph: "博",
     color: "#395291",
     editorUrl: "https://i.cnblogs.com/posts/edit",
     homeUrl: "https://i.cnblogs.com/",
@@ -69,6 +73,7 @@ export const channels: Channel[] = [
     platform: "csdn",
     name: "CSDN · 文章",
     short: "CSDN",
+    glyph: "C",
     color: "#ca513e",
     editorUrl: "https://editor.csdn.net/md/",
     homeUrl: "https://mp.csdn.net/mp_blog/manage/article",
@@ -85,6 +90,7 @@ export const channels: Channel[] = [
     platform: "xiaohongshu",
     name: "小红书 · 长文章",
     short: "小红书长文",
+    glyph: "文",
     color: "#d63758",
     editorUrl:
       "https://creator.xiaohongshu.com/publish/publish?from=menu&target=article",
@@ -102,6 +108,7 @@ export const channels: Channel[] = [
     platform: "xiaohongshu",
     name: "小红书 · 图文笔记",
     short: "小红书图文",
+    glyph: "图",
     color: "#d63758",
     editorUrl:
       "https://creator.xiaohongshu.com/publish/publish?from=menu&target=image",
@@ -119,6 +126,7 @@ export const channels: Channel[] = [
     platform: "linuxdo",
     name: "LINUX DO · 话题",
     short: "LINUX DO",
+    glyph: "L",
     color: "#98711f",
     editorUrl: "https://linux.do/",
     homeUrl: "https://linux.do/",
@@ -144,6 +152,22 @@ export const platformNames: Record<PlatformId, string> = {
   xiaohongshu: "小红书",
   linuxdo: "LINUX DO",
 };
+// Accounts are per platform; one platform may offer several content paths.
+export const platforms = (Object.keys(platformNames) as PlatformId[]).map(
+  (id) => {
+    const own = channels.filter((c) => c.platform === id);
+    return {
+      id,
+      name: platformNames[id],
+      color: own[0]!.color,
+      glyph: platformNames[id].slice(0, 1),
+      homeUrl: own[0]!.homeUrl,
+      origins: own[0]!.origins,
+      manual: own.every((c) => c.manual),
+      channels: own,
+    };
+  },
+);
 export function parseRemoteUrl(
   raw: string,
   expected?: ChannelId,

@@ -4,13 +4,13 @@ import {
   FolderOpen,
   Download,
   Upload,
-  ExternalLink,
-  Plug,
-  ScanLine,
   SlidersHorizontal,
   RefreshCw,
   Type,
   Check,
+  Sun,
+  Moon,
+  MonitorSmartphone,
 } from "lucide-react";
 import { db } from "../core/db";
 import {
@@ -21,10 +21,16 @@ import {
   restoreBackup,
 } from "../core/backup";
 import { downloadBlob } from "../core/assets";
-import { channels } from "../platforms/catalog";
-import { connectChannel, isExtension } from "../platforms/browser-adapter";
+import { isExtension } from "../platforms/browser-adapter";
 import { messageOf } from "../core/model";
-import { Alert, Modal, PlatformPill, command, timeLabel } from "./shared";
+import {
+  Alert,
+  Modal,
+  Segmented,
+  command,
+  timeLabel,
+  useNotify,
+} from "./shared";
 import { version } from "../../package.json";
 import {
   defaultPreferences,
@@ -33,10 +39,9 @@ import {
 } from "../core/preferences";
 import { UpdateSettings } from "./UpdateSettings";
 import { CleanupSettings } from "./CleanupSettings";
-export type SettingsTab = "general" | "platforms" | "backup" | "updates";
+export type SettingsTab = "general" | "backup" | "updates";
 const settingsTabs = [
   { id: "general", label: "通用偏好", icon: SlidersHorizontal },
-  { id: "platforms", label: "平台连接", icon: Plug },
   { id: "backup", label: "数据与备份", icon: FolderOpen },
   { id: "updates", label: "软件更新", icon: RefreshCw },
 ] as const;
@@ -49,11 +54,10 @@ export function SettingsPage({
   tab: SettingsTab;
   onTabChange: (tab: SettingsTab) => void;
 }) {
-  const probes = useLiveQuery(() => db.probes.toArray(), [], []);
   const backup = useLiveQuery(() => db.meta.get("backupCompletedAt"));
   const directory = useLiveQuery(() => db.meta.get("backupDirectory"));
   const [error, setError] = useState("");
-  const [notice, setNotice] = useState("");
+  const setNotice = useNotify();
   const [busy, setBusy] = useState(false);
   const [restore, setRestore] = useState<{
     file: File;
@@ -112,7 +116,6 @@ export function SettingsPage({
             onClick={() => {
               onTabChange(id);
               setError("");
-              setNotice("");
             }}
           >
             <Icon size={19} />
@@ -120,15 +123,7 @@ export function SettingsPage({
           </button>
         ))}
       </nav>
-      {error && <Alert>{error}</Alert>}
-      {notice && (
-        <div className="success-notice" role="status">
-          {notice}
-        </div>
-      )}
-      {!isExtension() && tab === "platforms" && (
-        <Alert>平台连接需要在 Edge 扩展中使用。</Alert>
-      )}
+      {error && <Alert tone="danger">{error}</Alert>}
       {tab === "general" && (
         <>
           <section
@@ -138,12 +133,49 @@ export function SettingsPage({
             <div className="settings-section-heading">
               <h2 id="appearance-heading">
                 <Type size={21} />
-                字体与阅读
+                外观与阅读
               </h2>
               <span className="settings-saved">
                 <Check size={15} />
                 自动保存
               </span>
+            </div>
+            <div className="preference-row">
+              <span>界面外观</span>
+              <Segmented
+                label="界面外观"
+                value={preferences.theme}
+                onChange={(theme) => changePreference({ theme })}
+                options={[
+                  {
+                    id: "system",
+                    label: (
+                      <>
+                        <MonitorSmartphone size={15} />
+                        跟随系统
+                      </>
+                    ),
+                  },
+                  {
+                    id: "light",
+                    label: (
+                      <>
+                        <Sun size={15} />
+                        浅色
+                      </>
+                    ),
+                  },
+                  {
+                    id: "dark",
+                    label: (
+                      <>
+                        <Moon size={15} />
+                        深色
+                      </>
+                    ),
+                  },
+                ]}
+              />
             </div>
             <div className="appearance-grid">
               <div>
@@ -267,6 +299,7 @@ export function SettingsPage({
               <button
                 onClick={() =>
                   changePreference({
+                    theme: defaultPreferences.theme,
                     fontSize: defaultPreferences.fontSize,
                     editorFontSize: defaultPreferences.editorFontSize,
                     libraryLayout: defaultPreferences.libraryLayout,
@@ -283,75 +316,6 @@ export function SettingsPage({
       )}
       {tab === "updates" && (
         <UpdateSettings preferences={preferences} onChange={changePreference} />
-      )}
-      {tab === "platforms" && (
-        <section className="settings-section">
-          <div className="section-intro">
-            <h2>平台连接</h2>
-          </div>
-          <div className="platform-settings">
-            {channels.map((channel) => {
-              const probe = probes.find((p) => p.channel === channel.id);
-              return (
-                <div className="platform-setting" key={channel.id}>
-                  <div>
-                    <PlatformPill id={channel.id} />
-                    <h3>{channel.name}</h3>
-                    <p>
-                      {channel.manual
-                        ? "人工发布辅助"
-                        : probe?.problems.length
-                          ? probe.problems.join("；")
-                          : probe?.editorFound
-                            ? "已识别编辑器"
-                            : "尚未检查编辑器"}
-                    </p>
-                    {probe && (
-                      <small>
-                        检查于 {timeLabel(probe.checkedAt)}
-                        {probe.account ? " · " + probe.account : ""}
-                      </small>
-                    )}
-                  </div>
-                  <div className="button-row">
-                    <a
-                      href={channel.editorUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                    >
-                      原站
-                      <ExternalLink size={14} />
-                    </a>
-                    <button
-                      disabled={busy || !isExtension()}
-                      onClick={() => {
-                        const permission = connectChannel(channel.id);
-                        void act(async () => {
-                          if (!(await permission))
-                            throw new Error("尚未授予平台权限");
-                        }, "平台访问权限已开启。");
-                      }}
-                    >
-                      <Plug size={15} />
-                      连接
-                    </button>
-                    <button
-                      disabled={busy || !isExtension() || channel.manual}
-                      onClick={() =>
-                        void act(() =>
-                          command({ type: "probe", channel: channel.id }),
-                        )
-                      }
-                    >
-                      <ScanLine size={15} />
-                      检查页面
-                    </button>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </section>
       )}
       {tab === "backup" && (
         <section className="settings-section">

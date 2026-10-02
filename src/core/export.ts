@@ -2,7 +2,7 @@ import { strToU8 } from "fflate";
 import { db, type WorkbenchDB } from "./db";
 import { assetIdsIn } from "./assets";
 import { zipFiles } from "./archive";
-import { resolveContent } from "./variants";
+import { resolveContent, resolveMetadata } from "./variants";
 import type { Asset, Content, Metadata } from "./model";
 
 export function safeFilename(title: string) {
@@ -83,7 +83,7 @@ async function pack(documents: ExportDocument[], assets: Asset[]) {
     );
   }
   files["使用说明.txt"] = strToU8(
-    "每个版本包含正文.md、稿件信息.json 与 images 图片目录。解压后可在任意 Markdown 编辑器打开，或将版本文件夹导入 zMatrix。标题、配图顺序及平台设置保存在稿件信息.json，重新导入 Markdown 时不会自动恢复这些设置。此文件为内容导出；完整工作空间恢复请使用“平台与备份”中的 ZIP 备份。\n",
+    "每个版本包含正文.md、稿件信息.json 与 images 图片目录。解压后可在任意 Markdown 编辑器打开，或将版本文件夹导入 zMatrix。标题、配图顺序及平台设置保存在稿件信息.json，重新导入 Markdown 时不会自动恢复这些设置。此文件为内容导出；通用标签、摘要和封面随母稿一起导出，平台版本中是合并后的结果。完整工作空间恢复请使用“设置 → 数据与备份”中的 ZIP 备份。\n",
   );
   return zipFiles(files);
 }
@@ -125,7 +125,13 @@ export async function exportArticles(
         const article = await database.articles.get(id);
         if (!article) throw new Error("部分稿件已不存在，请刷新内容库后重试。");
         const root = `${safeFilename(article.title)}-${article.id.slice(0, 8)}`;
-        documents.push({ path: `${root}/母稿`, content: article });
+        documents.push({
+          path: `${root}/母稿`,
+          content: article,
+          ...(article.defaults
+            ? { metadata: { category: "", ...article.defaults } }
+            : {}),
+        });
         for (const variant of await database.variants
           .where("articleId")
           .equals(id)
@@ -133,7 +139,7 @@ export async function exportArticles(
           documents.push({
             path: `${root}/${variant.channel.replace(":", "-")}`,
             content: resolveContent(article, variant),
-            metadata: variant.metadata,
+            metadata: resolveMetadata(article, variant),
           });
       }
       if (!documents.length) throw new Error("请先选择需要导出的稿件。");

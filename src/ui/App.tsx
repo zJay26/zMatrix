@@ -17,14 +17,21 @@ import {
   ArrowUpRight,
   Download,
   X,
+  LayoutDashboard,
+  Plug,
+  Sun,
+  Moon,
+  MonitorSmartphone,
+  HardDrive,
 } from "lucide-react";
 import { db, saveArticle } from "../core/db";
 import { newArticle } from "../core/variants";
-import { messageOf, type Article } from "../core/model";
+import { messageOf, type Article, type ChannelId } from "../core/model";
 import { LibraryPage, defaultLibraryView } from "./LibraryPage";
-import { Alert, command, timeLabel } from "./shared";
+import { HomePage } from "./HomePage";
+import { Alert, command, relativeTime, ToastProvider } from "./shared";
 import { isExtension } from "../platforms/browser-adapter";
-import { getPreferences } from "../core/preferences";
+import { getPreferences, savePreferences } from "../core/preferences";
 import {
   checkForUpdates,
   dismissUpdate,
@@ -40,16 +47,48 @@ const UpdateOverlay = lazy(() =>
 const EditorPage = lazy(() =>
   import("./EditorPage").then((m) => ({ default: m.EditorPage })),
 );
+const DistributeHost = lazy(() =>
+  import("./DistributeHost").then((m) => ({ default: m.DistributeHost })),
+);
+const BatchDistributeDialog = lazy(() =>
+  import("./BatchDistributeDialog").then((m) => ({
+    default: m.BatchDistributeDialog,
+  })),
+);
 const QueuePage = lazy(() =>
   import("./QueuePage").then((m) => ({ default: m.QueuePage })),
 );
 const DataPage = lazy(() =>
   import("./DataPage").then((m) => ({ default: m.DataPage })),
 );
+const AccountsPage = lazy(() =>
+  import("./AccountsPage").then((m) => ({ default: m.AccountsPage })),
+);
 const SettingsPage = lazy(() =>
   import("./SettingsPage").then((m) => ({ default: m.SettingsPage })),
 );
-type Screen = "library" | "queue" | "data" | "settings";
+export type Screen =
+  "home" | "library" | "queue" | "data" | "accounts" | "settings";
+const nav = [
+  { id: "home", name: "总览", icon: LayoutDashboard },
+  { id: "library", name: "内容库", icon: BookOpenText },
+  { id: "queue", name: "发布队列", icon: ListChecks },
+  { id: "data", name: "数据与互动", icon: ChartNoAxesCombined },
+  { id: "accounts", name: "平台账号", icon: Plug },
+  { id: "settings", name: "设置", icon: Settings2 },
+] as const;
+const themes = [
+  { id: "system", name: "跟随系统", icon: MonitorSmartphone },
+  { id: "light", name: "浅色", icon: Sun },
+  { id: "dark", name: "深色", icon: Moon },
+] as const;
+// Tasks that wait for the creator rather than for the queue.
+const attentionStates = [
+  "awaiting_publish",
+  "awaiting_review",
+  "failed",
+  "uncertain",
+];
 
 export function App() {
   const preferences = useLiveQuery(() => getPreferences());
@@ -64,7 +103,11 @@ export function App() {
     0,
   );
   const queuedCount = useLiveQuery(
-    () => db.tasks.where("state").equals("queued").count(),
+    () =>
+      db.tasks
+        .where("state")
+        .anyOf(["queued", ...attentionStates])
+        .count(),
     [],
     0,
   );
@@ -73,10 +116,14 @@ export function App() {
   const backupAt = useLiveQuery(() => db.meta.get("backupCompletedAt"));
   const coveredAt = useLiveQuery(() => db.meta.get("backupCoveredChangeAt"));
   const [screen, setScreen] = useState<Screen>(
-    location.hash === "#updates" ? "settings" : "library",
+    location.hash === "#updates" ? "settings" : "home",
   );
   const [libraryView, setLibraryView] = useState(defaultLibraryView);
-  const [editing, setEditing] = useState<Article | null>(null);
+  const [editing, setEditing] = useState<{
+    article: Article;
+    channel?: ChannelId;
+  } | null>(null);
+  const [distributing, setDistributing] = useState<string[] | null>(null);
   const [newDraftId, setNewDraftId] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [backupError, setBackupError] = useState("");
@@ -93,6 +140,16 @@ export function App() {
       action();
     }
   };
+  const go = (target: Screen, tab?: SettingsTab) =>
+    void navigate(() => {
+      setEditing(null);
+      setScreen(target);
+      if (target === "settings") setSettingsTab(tab ?? "general");
+    });
+  const open = (article: Article, channel?: ChannelId) => {
+    setNewDraftId(null);
+    setEditing({ article, channel });
+  };
   useEffect(() => {
     if (!preferences || refreshed.current) return;
     refreshed.current = true;
@@ -107,6 +164,24 @@ export function App() {
       `${preferences.editorFontSize}px`,
     );
   }, [preferences?.fontSize, preferences?.editorFontSize]);
+  useLayoutEffect(() => {
+    if (!preferences) return;
+    const system =
+      typeof matchMedia === "function"
+        ? matchMedia("(prefers-color-scheme: dark)")
+        : undefined;
+    const apply = () => {
+      document.documentElement.dataset.theme =
+        preferences.theme === "system"
+          ? system?.matches
+            ? "dark"
+            : "light"
+          : preferences.theme;
+    };
+    apply();
+    system?.addEventListener("change", apply);
+    return () => system?.removeEventListener("change", apply);
+  }, [preferences?.theme]);
   useEffect(() => {
     if (preferences)
       setLibraryView((view) => ({
@@ -167,17 +242,24 @@ export function App() {
       setNewDraftId(sample ? null : article.id);
       setError("");
       setScreen("library");
-      setEditing(article);
+      setEditing({ article });
     } catch (e) {
       setError(messageOf(e));
     }
   };
-  const nav = [
-    { id: "library", name: "内容库", icon: BookOpenText },
-    { id: "queue", name: "发布队列", icon: ListChecks },
-    { id: "data", name: "数据与互动", icon: ChartNoAxesCombined },
-    { id: "settings", name: "设置", icon: Settings2 },
-  ] as const;
+  const importFiles = async (files: File[]) => {
+    if (!files.length || !(await flushEditor.current())) return;
+    try {
+      const { importMarkdownFiles } = await import("../core/import");
+      const imported = await importMarkdownFiles(files);
+      setError("");
+      setScreen("library");
+      if (imported.length === 1) open(imported[0]!);
+      else setEditing(null);
+    } catch (e) {
+      setError(messageOf(e));
+    }
+  };
   const updateAvailable =
     hasUpdate(update) &&
     update?.includePrereleases === preferences?.includePrereleases;
@@ -187,35 +269,34 @@ export function App() {
         正在打开工作台…
       </div>
     );
+  const theme = themes.find((item) => item.id === preferences.theme)!;
+  const nextTheme = themes[(themes.indexOf(theme) + 1) % themes.length]!;
   return (
-    <>
+    <ToastProvider>
       <div className="app-shell" inert={!!installation}>
         <aside className="sidebar">
           <a
             className="brand"
-            aria-label="zMatrix 内容库"
+            aria-label="zMatrix 总览"
             href="#"
             onClick={(e) => {
               e.preventDefault();
-              void navigate(() => {
-                setEditing(null);
-                setScreen("library");
-              });
+              go("home");
             }}
           >
             <img
               className="brand-mark"
               src="/icon/zmatrix.svg"
               alt=""
-              width={43}
-              height={43}
+              width={34}
+              height={34}
             />
             <span>
               zMatrix<small>创作工作台</small>
             </span>
           </a>
           <button
-            className="new-article"
+            className="new-article primary"
             aria-label="写新稿"
             onClick={() => void create()}
           >
@@ -230,21 +311,16 @@ export function App() {
                   : item.id === "queue"
                     ? queuedCount
                     : 0;
+              const current = !editing && screen === item.id;
               return (
                 <button
                   key={item.id}
                   aria-label={item.name}
-                  aria-current={screen === item.id ? "page" : undefined}
-                  className={`${screen === item.id ? "active" : ""} ${item.id === "settings" ? "settings-nav" : ""}`}
-                  onClick={() =>
-                    void navigate(() => {
-                      setEditing(null);
-                      setScreen(item.id);
-                      if (item.id === "settings") setSettingsTab("general");
-                    })
-                  }
+                  aria-current={current ? "page" : undefined}
+                  className={`${current ? "active" : ""} ${item.id === "accounts" ? "nav-divider" : ""}`}
+                  onClick={() => go(item.id)}
                 >
-                  <item.icon size={19} />
+                  <item.icon size={18} />
                   <span>{item.name}</span>
                   {!!count && <b>{count}</b>}
                   {item.id === "settings" && updateAvailable && (
@@ -255,29 +331,36 @@ export function App() {
             })}
           </nav>
           <div className="sidebar-foot">
-            <div>
-              <span className="online-dot" />
-              本地工作空间
-            </div>
-            <p>
-              {backupError
-                ? "目录备份需要处理"
-                : directory
-                  ? `备份 ${timeLabel(backupAt?.value as number)}`
-                  : "建议设置文件夹备份"}
-            </p>
             <button
-              className="text-button"
+              className={`backup-status ${backupError ? "warn" : ""}`}
+              title="管理备份"
+              onClick={() => go("settings", "backup")}
+            >
+              <HardDrive size={16} />
+              <span>
+                本地工作空间
+                <small>
+                  {backupError
+                    ? "目录备份需要处理"
+                    : directory
+                      ? `已备份 · ${relativeTime(backupAt?.value as number)}`
+                      : "建议设置文件夹备份"}
+                </small>
+              </span>
+              <ArrowUpRight size={14} />
+            </button>
+            <button
+              className="theme-toggle"
+              aria-label={`外观：${theme.name}，点击切换为${nextTheme.name}`}
+              title={`外观：${theme.name}`}
               onClick={() =>
-                void navigate(() => {
-                  setEditing(null);
-                  setScreen("settings");
-                  setSettingsTab("backup");
-                })
+                void savePreferences({ theme: nextTheme.id }).catch((e) =>
+                  setError(messageOf(e)),
+                )
               }
             >
-              管理备份
-              <ArrowUpRight size={13} />
+              <theme.icon size={16} />
+              {theme.name}
             </button>
           </div>
         </aside>
@@ -286,17 +369,11 @@ export function App() {
             update?.release &&
             update.dismissedVersion !== update.release.version && (
               <div className="update-banner" role="status">
-                <Download size={18} />
+                <Download size={17} />
                 <span>新版本 v{update.release.version} 已发布</span>
                 <button
                   className="text-button"
-                  onClick={() =>
-                    void navigate(() => {
-                      setEditing(null);
-                      setScreen("settings");
-                      setSettingsTab("updates");
-                    })
-                  }
+                  onClick={() => go("settings", "updates")}
                 >
                   查看更新
                   <ArrowUpRight size={15} />
@@ -315,7 +392,7 @@ export function App() {
                 </button>
               </div>
             )}
-          {error && <Alert>{error}</Alert>}
+          {error && <Alert tone="danger">{error}</Alert>}
           {backupError && (
             <Alert>
               {backupError}
@@ -336,37 +413,72 @@ export function App() {
           >
             {editing ? (
               <EditorPage
-                key={editing.id}
-                initial={editing}
-                isNew={editing.id === newDraftId}
+                key={editing.article.id}
+                initial={editing.article}
+                initialChannel={editing.channel}
+                isNew={editing.article.id === newDraftId}
                 defaultViewMode={preferences.editorLayout}
                 onFlushReady={onFlushReady}
-                onBack={() => setEditing(null)}
-                onOpenCopy={setEditing}
+                onBack={() => {
+                  setEditing(null);
+                  setScreen("library");
+                }}
+                onOpenCopy={(article) => setEditing({ article })}
                 onQueue={() => {
                   setEditing(null);
                   setScreen("queue");
                 }}
               />
+            ) : screen === "home" ? (
+              <HomePage
+                onOpen={open}
+                onCreate={(sample) => void create(sample)}
+                onImport={(files) => void importFiles(files)}
+                onDistribute={(id) => setDistributing([id])}
+                onNavigate={go}
+              />
             ) : screen === "library" ? (
               <LibraryPage
                 view={libraryView}
                 onViewChange={setLibraryView}
-                onOpen={(article) => {
-                  setNewDraftId(null);
-                  setEditing(article);
-                }}
+                onOpen={open}
                 onCreate={(sample) => void create(sample)}
+                onDistribute={setDistributing}
               />
             ) : screen === "queue" ? (
-              <QueuePage />
+              <QueuePage onOpenLibrary={() => go("library")} />
             ) : screen === "data" ? (
               <DataPage />
+            ) : screen === "accounts" ? (
+              <AccountsPage />
             ) : (
               <SettingsPage
                 preferences={preferences}
                 tab={settingsTab}
                 onTabChange={setSettingsTab}
+              />
+            )}
+            {distributing?.length === 1 && (
+              <DistributeHost
+                key={distributing[0]}
+                articleId={distributing[0]!}
+                onClose={() => setDistributing(null)}
+                onQueue={() => setScreen("queue")}
+                onEdit={(article, channel) => {
+                  setDistributing(null);
+                  open(article, channel);
+                }}
+              />
+            )}
+            {!!distributing && distributing.length > 1 && (
+              <BatchDistributeDialog
+                articleIds={distributing}
+                onClose={() => setDistributing(null)}
+                onQueue={() => setScreen("queue")}
+                onOpen={(article) => {
+                  setDistributing(null);
+                  open(article);
+                }}
               />
             )}
           </Suspense>
@@ -383,6 +495,6 @@ export function App() {
           <UpdateOverlay installation={installation} />
         </Suspense>
       )}
-    </>
+    </ToastProvider>
   );
 }

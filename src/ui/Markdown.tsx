@@ -10,15 +10,27 @@ import { Annotation, EditorState, Transaction } from "@codemirror/state";
 import { Bold, Italic, Heading2, List, Quote, Code, Link } from "lucide-react";
 import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
 import { markdown } from "@codemirror/lang-markdown";
-import {
-  defaultHighlightStyle,
-  syntaxHighlighting,
-} from "@codemirror/language";
+import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
+import { tags } from "@lezer/highlight";
 import { db } from "../core/db";
 import { assetIdsIn, blobDataUrl } from "../core/assets";
 import { renderMarkdown, renderMermaid } from "../core/render";
 import { messageOf } from "../core/model";
 const externalUpdate = Annotation.define<boolean>();
+// Colors come from the stylesheet so the source view follows the app theme.
+const highlightStyle = HighlightStyle.define([
+  { tag: tags.heading, color: "var(--syntax-heading)", fontWeight: "700" },
+  { tag: tags.strong, color: "var(--syntax-strong)", fontWeight: "700" },
+  { tag: tags.emphasis, fontStyle: "italic" },
+  { tag: tags.strikethrough, textDecoration: "line-through" },
+  { tag: [tags.link, tags.url], color: "var(--syntax-link)" },
+  { tag: tags.monospace, color: "var(--syntax-code)" },
+  { tag: tags.quote, color: "var(--syntax-quote)" },
+  {
+    tag: [tags.processingInstruction, tags.meta, tags.contentSeparator],
+    color: "var(--syntax-meta)",
+  },
+]);
 type Format =
   "bold" | "italic" | "heading" | "list" | "quote" | "code" | "link";
 function format(view: EditorView, kind: Format) {
@@ -105,7 +117,7 @@ export function MarkdownEditor({
             ...historyKeymap,
           ]),
           markdown(),
-          syntaxHighlighting(defaultHighlightStyle),
+          syntaxHighlighting(highlightStyle),
           EditorView.lineWrapping,
           EditorView.contentAttributes.of({ "aria-label": "Markdown 正文" }),
           EditorView.updateListener.of((update) => {

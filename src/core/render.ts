@@ -11,7 +11,15 @@ import { db, type WorkbenchDB } from "./db";
 import { assetIdsIn, wireAsset } from "./assets";
 import { addAsset } from "./assets";
 import { channelFor } from "../platforms/catalog";
-import type { PreparedContent, Snapshot, WireAsset } from "./model";
+import type {
+  Article,
+  ChannelId,
+  PreparedContent,
+  Snapshot,
+  Variant,
+  WireAsset,
+} from "./model";
+import { resolveContent, resolveMetadata } from "./variants";
 
 const pipeline = unified()
   .use(remarkParse)
@@ -243,4 +251,20 @@ export function preflight(
         errors.push("图文笔记至少需要一张配图");
     }
   return errors;
+}
+// The same checks the queue applies, without freezing a snapshot.
+export function readiness(
+  article: Article,
+  variant: Variant | undefined,
+  channel: ChannelId,
+  mode: "draft" | "publish",
+) {
+  return preflight(
+    {
+      ...resolveContent(article, variant),
+      channel,
+      metadata: resolveMetadata(article, variant),
+    } as Snapshot,
+    mode,
+  );
 }

@@ -136,7 +136,10 @@ async function unusedAssets(database: typeof db, now: number) {
     content(item);
     if (item.metadata.coverId) referenced.add(item.metadata.coverId);
   };
-  for (const article of await database.articles.toArray()) content(article);
+  for (const article of await database.articles.toArray()) {
+    content(article);
+    if (article.defaults?.coverId) referenced.add(article.defaults.coverId);
+  }
   for (const variant of await database.variants.toArray()) {
     content(variant.overrides);
     if (variant.metadata.coverId) referenced.add(variant.metadata.coverId);

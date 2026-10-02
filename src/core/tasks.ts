@@ -96,6 +96,41 @@ export function recoverTask(task: Task): Task {
       : "执行中断，可主动继续。",
   };
 }
+// Why this exact version cannot be queued again, if it cannot.
+export function duplicateReason(
+  candidate: Pick<Task, "channel" | "mode" | "snapshot">,
+  existing: Pick<
+    Task,
+    | "channel"
+    | "mode"
+    | "snapshot"
+    | "state"
+    | "tabId"
+    | "remoteId"
+    | "remoteUrl"
+    | "events"
+  >[],
+  receipts: Set<string>,
+) {
+  if (
+    receipts.has(
+      `${candidate.channel}/${candidate.mode}/${candidate.snapshot.fingerprint}`,
+    )
+  )
+    return "相同版本已有任务完成记录，请核实原站，避免重复发布。";
+  if (
+    existing.some(
+      (e) =>
+        e.snapshot.fingerprint === candidate.snapshot.fingerprint &&
+        e.channel === candidate.channel &&
+        e.mode === candidate.mode &&
+        (!["cancelled", "failed"].includes(e.state) ||
+          hasRemoteActivity(e as Task)),
+    )
+  )
+    return "相同版本已有任务。请先查看任务记录，避免重复发布。";
+  return undefined;
+}
 export async function enqueue(
   snapshots: { snapshot: Snapshot; prepared: PreparedContent }[],
   mode: Mode,
@@ -124,25 +159,15 @@ export async function enqueue(
     database.meta,
     async () => {
       const existing = await database.tasks.toArray();
+      const receipts = new Set(
+        (await database.taskReceipts.toCollection().primaryKeys()) as string[],
+      );
       for (const task of tasks) {
         const article = await database.articles.get(task.snapshot.articleId);
         if (!article || article.trashedAt)
           throw new Error("稿件已删除或在回收站，请返回内容库。");
-        if (await database.taskReceipts.get(taskReceipt(task).id))
-          throw new Error(
-            "相同版本已有任务完成记录，请核实原站，避免重复发布。",
-          );
-        if (
-          existing.some(
-            (e) =>
-              e.snapshot.fingerprint === task.snapshot.fingerprint &&
-              e.channel === task.channel &&
-              e.mode === task.mode &&
-              (!["cancelled", "failed"].includes(e.state) ||
-                hasRemoteActivity(e)),
-          )
-        )
-          throw new Error("相同版本已有任务。请先查看任务记录，避免重复发布。");
+        const duplicate = duplicateReason(task, existing, receipts);
+        if (duplicate) throw new Error(duplicate);
         existing.push(task);
       }
       await database.tasks.bulkAdd(tasks);

@@ -1,6 +1,6 @@
 {
   "name": "zmatrix",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "private": true,
   "type": "module",
   "description": "zMatrix · 本地优先的自媒体矩阵工作台",
@@ -33,6 +33,7 @@
     "@codemirror/language-data": "6.5.2",
     "@codemirror/state": "6.7.5",
     "@codemirror/view": "6.43.12",
+    "@lezer/highlight": "1.2.3",
     "dexie": "4.4.6",
     "dexie-react-hooks": "4.4.0",
     "diff": "9.0.0",

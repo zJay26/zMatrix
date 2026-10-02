@@ -58,6 +58,13 @@ const schema = z.object({
       updatedAt: timestamp,
       archived: z.boolean(),
       trashedAt: timestamp.optional(),
+      defaults: z
+        .object({
+          tags: z.array(text),
+          summary: text,
+          coverId: text.optional(),
+        })
+        .optional(),
     }),
   ),
   variants: z.array(
@@ -253,7 +260,10 @@ export async function inspectBackup(blob: Blob) {
     seen.add(asset.id);
   }
   const referenced = [
-    ...data.articles.flatMap((a) => a.imageIds),
+    ...data.articles.flatMap((a) => [
+      ...a.imageIds,
+      ...(a.defaults?.coverId ? [a.defaults.coverId] : []),
+    ]),
     ...data.variants.flatMap((v) => [
       ...(v.overrides.imageIds ?? []),
       ...(v.metadata.coverId ? [v.metadata.coverId] : []),

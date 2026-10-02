@@ -85,10 +85,13 @@ export async function saveArticle(
       if (previous?.trashedAt)
         throw new Error("稿件已在回收站，请先恢复后再编辑。");
       checkExpected(previous, guard);
+      // A guarded save has already proven which row it replaces, so it may keep
+      // the revision (shared publishing details are not a content revision).
       if (
         previous &&
         (previous.revision > article.revision ||
-          (previous.revision === article.revision &&
+          (!guard &&
+            previous.revision === article.revision &&
             JSON.stringify(previous) !== JSON.stringify(article)))
       )
         throw new Error("稿件已在其他窗口更新，请重新打开以免覆盖。");

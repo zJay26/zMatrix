@@ -1,4 +1,4 @@
-import { channelFor, parseRemoteUrl } from "./catalog";
+import { channelFor, channels, parseRemoteUrl } from "./catalog";
 import { pageDriver, type PageRequest, type PageResult } from "./page-driver";
 import { readPageCategories } from "./metadata";
 import {
@@ -22,6 +22,21 @@ export async function connectChannel(channel: ChannelId) {
   if (!isExtension()) throw new Error("请在 Edge 中加载扩展后连接平台。");
   return chrome.permissions.request({ origins: channelFor(channel).origins });
 }
+// One browser prompt for every platform, instead of one per platform.
+export async function connectAllChannels() {
+  if (!isExtension()) throw new Error("请在 Edge 中加载扩展后连接平台。");
+  return chrome.permissions.request({
+    origins: [...new Set(channels.flatMap((c) => c.origins))],
+  });
+}
+export async function hasChannelAccess(channel: ChannelId) {
+  if (!isExtension()) return false;
+  return chrome.permissions.contains({ origins: channelFor(channel).origins });
+}
+export async function disconnectChannel(channel: ChannelId) {
+  if (!isExtension()) throw new Error("请在 Edge 中加载扩展后管理平台。");
+  return chrome.permissions.remove({ origins: channelFor(channel).origins });
+}
 const delay = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 async function requirePermission(channel: ChannelId) {
   if (!isExtension())
@@ -31,7 +46,7 @@ async function requirePermission(channel: ChannelId) {
       origins: channelFor(channel).origins,
     }))
   )
-    throw new Error("请先在平台设置中连接此平台。");
+    throw new Error("请先在“平台账号”中连接此平台。");
 }
 export async function readCategoryCandidates(
   channel: ChannelId,

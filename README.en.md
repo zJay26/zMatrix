@@ -20,15 +20,15 @@
 </p>
 
 > [!IMPORTANT]
-> **v0.4.0 is a developer preview.** Local editing, variants and backups are implemented. None of the 12 real-platform draft/pre-publication acceptance flows have passed yet; live metrics and comments also remain unverified. You always perform the final publication on the platform yourself. See the [acceptance record](docs/acceptance.md).
+> **v0.5.0 is a developer preview.** Local editing, variants and backups are implemented. None of the 12 real-platform draft/pre-publication acceptance flows have passed yet; live metrics and comments also remain unverified. You always perform the final publication on the platform yourself. See the [acceptance record](docs/acceptance.md).
 
-v0.4.0 adds in-app updates for unpacked extensions: authorize the current installation folder once, then click Update to download, verify, back up, install and reload. The draft recycle bin, bulk cleanup and shorter publishing workflow remain available. Native Edge folder authorization and cross-version reload still require live acceptance; see the [updater verification record (Chinese)](docs/verification-updater-2026-09-30.md).
+v0.5.0 redesigns the interface and distribution flow: tags, summary and cover are entered once and shared by every platform, platforms are picked and distributed in one step, and there are new overview and accounts pages plus a dark appearance. The new interface has not yet been accepted in a real Edge extension; see the [redesign verification record (Chinese)](docs/verification-redesign-2026-10-02.md). Since v0.4.0, unpacked extensions can update in-app: authorize the current installation folder once, then click Update to download, verify, back up, install and reload. Native Edge folder authorization and cross-version reload still require live acceptance; see the [updater verification record (Chinese)](docs/verification-updater-2026-09-30.md).
 
 ## Your content, in one workspace
 
 Keep a master draft, tailor titles and content for each platform, prepare image posts, and track the work locally.
 
-**Master draft → platform variants → images and preview → draft / publication preparation → manual publication → registration and tracking**
+**Master draft → shared publishing details filled in once → pick platforms and distribute in one step → manual publication → registration and tracking**
 
 ![zMatrix: one draft, a voice for every platform](docs/assets/hero.png)
 
@@ -41,11 +41,13 @@ Keep a master draft, tailor titles and content for each platform, prepare image 
 | Platform variants       | Inherited or overridden titles, content and images; change reminders, diffs and snapshots                                                                    |
 | Technical content       | Code, tables, LaTeX and Mermaid previews; selected content converted to images as needed                                                                     |
 | Image posts             | Three templates, covers, colors, typography and pagination; 1080 × 1440 PNG export                                                                           |
+| Unified distribution    | Tags, summary and cover entered once and shared by every platform; live per-platform readiness checks; batch distribution for several articles               |
+| Overview and accounts   | A home page with to-dos and each article's status per platform; an accounts page to connect platforms, check sign-in and open creator centers                |
 | Publication preparation | Frozen content, persistent sequential tasks and a manual final publication step                                                                              |
 | Tracking                | Registered article links, cached metrics, paginated comments and local read status; live integrations await validation                                       |
 | Storage and backup      | Coalesced autosave, multi-window conflict protection with save-as-copy recovery, ZIP backup/restore and authorized-folder backups                            |
 | Portable content        | Export a version or multiple articles as Markdown ZIPs, with platform metadata and images referenced by relative paths                                       |
-| Preferences             | Larger default typography, independent interface/editor font sizes, default views and startup refresh preferences saved locally                              |
+| Preferences             | Light, dark or system appearance, independent interface/editor font sizes, default views and startup refresh preferences saved locally                       |
 | Software updates        | Check releases every six hours; authorize the installed folder, then click Update to verify, back up, replace files and reload                               |
 
 v0.3.0 adds category choices, removable tags, summary extraction, field requirement labels and select-all in the publishing preview. CNBlogs filling is restored with a browser request guard; publishing and draft saving both require a click on the original site. The original incident and real-account behavior remain unverified. [Workflow and export guide (Chinese)](docs/workbench.md).
@@ -57,7 +59,7 @@ v0.3.0 adds category choices, removable tags, summary extraction, field requirem
 
 </details>
 
-Screenshots show the local web preview with the built-in sample article. They do not show live platform integration or private account data. The application UI is currently in Chinese.
+Screenshots show the local web preview with the built-in sample article. They do not show live platform integration or private account data. They predate the current interface redesign and will be refreshed. The application UI is currently in Chinese.
 
 ## Platform status
 
@@ -77,9 +79,9 @@ Missing settings completed manually do not count as successful automation. Uncer
 
 ## Get started
 
-1. Download the extension ZIP from [Releases](https://github.com/zJay26/zMatrix/releases), such as `zMatrix-edge-0.4.0.zip`, and extract it to a permanent folder.
+1. Download the extension ZIP from [Releases](https://github.com/zJay26/zMatrix/releases), such as `zMatrix-edge-0.5.0.zip`, and extract it to a permanent folder.
 2. Open `edge://extensions`, enable **Developer mode**, select **Load unpacked**, and choose the folder containing `manifest.json`.
-3. Open **zMatrix** from the browser toolbar. Try the sample article, then connect platforms and configure backups as needed.
+3. Open **zMatrix** from the browser toolbar. Connect platforms on the accounts page, try writing and distributing the sample article, then configure backups as needed.
 
 Versions 0.3.0 and earlier need one manual upgrade: replace files in the same folder and reload the extension. Starting with 0.4.0, authorize that folder under Settings → Software updates, then click Update for subsequent releases. The browser may request renewed folder access; releases that change extension permissions still need manual installation. Preserve the extension identity and avoid uninstalling it, which may remove local storage. [Detailed installation and recovery guide (Chinese)](docs/installation.md).
 
