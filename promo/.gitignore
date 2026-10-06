@@ -1,0 +1,7 @@
+node_modules/
+explore/
+out/snap/
+out/sheet*.png
+out/wave.png
+out/seg_*
+out/list_*

@@ -53,6 +53,12 @@ export function canRemoveTask(task: Task) {
     (task.state === "cancelled" && !hasRemoteActivity(task))
   );
 }
+export function canAbandonTask(task: Task) {
+  return (
+    !["preparing", "submitting", "verifying"].includes(task.state) &&
+    !canRemoveTask(task)
+  );
+}
 export function taskReceipt(task: Task): TaskReceipt {
   return {
     id: `${task.channel}/${task.mode}/${task.snapshot.fingerprint}`,
@@ -62,7 +68,11 @@ export function taskReceipt(task: Task): TaskReceipt {
     recordedAt: Date.now(),
   };
 }
-export async function removeTasks(ids: string[], database = db) {
+export async function removeTasks(
+  ids: string[],
+  database = db,
+  options: { abandonIds?: string[] } = {},
+) {
   return database.transaction(
     "rw",
     database.tasks,
@@ -70,10 +80,21 @@ export async function removeTasks(ids: string[], database = db) {
     database.meta,
     async () => {
       const tasks = await database.tasks.bulkGet([...new Set(ids)]);
-      if (tasks.some((t) => !t || !canRemoveTask(t)))
+      const abandoned = new Set(options.abandonIds);
+      if (
+        tasks.some(
+          (t) =>
+            !t ||
+            (!canRemoveTask(t) && !(abandoned.has(t.id) && canAbandonTask(t))),
+        )
+      )
         throw new Error("部分任务正在执行或结果待核实，请先处理后再清理。");
       for (const task of tasks) {
-        if (["draft_saved", "published"].includes(task!.state))
+        if (
+          ["draft_saved", "published"].includes(task!.state) ||
+          canAbandonTask(task!) ||
+          abandoned.has(task!.id)
+        )
           await database.taskReceipts.put(taskReceipt(task!));
       }
       await database.tasks.bulkDelete(tasks.map((t) => t!.id));
@@ -117,7 +138,7 @@ export function duplicateReason(
       `${candidate.channel}/${candidate.mode}/${candidate.snapshot.fingerprint}`,
     )
   )
-    return "相同版本已有任务完成记录，请核实原站，避免重复发布。";
+    return "相同版本已有任务防重记录，请核实原站，避免重复发布。";
   if (
     existing.some(
       (e) =>
@@ -195,7 +216,7 @@ export async function claimTask(
       if (await database.taskReceipts.get(taskReceipt(task).id)) {
         await database.tasks.update(id, {
           state: "cancelled",
-          step: "相同版本已有完成记录，已取消重复任务",
+          step: "相同版本已有防重记录，已取消重复任务",
           updatedAt: Date.now(),
         });
         await changed(database);
@@ -226,6 +247,25 @@ export async function cancelTask(id: string, database: WorkbenchDB = db) {
       "用户取消待执行任务",
       database,
     );
+  });
+}
+// Claim verification in the same table transaction used by cleanup, so another
+// workbench cannot remove a task while its remote result is being checked.
+export async function claimTaskVerification(id: string, database = db) {
+  return database.transaction("rw", database.tasks, database.meta, async () => {
+    const task = await database.tasks.get(id);
+    if (!task) throw new Error("任务不存在，请刷新队列。");
+    if (["preparing", "submitting", "verifying"].includes(task.state))
+      throw new Error("任务正在执行或核实，请稍后再试。");
+    if (task.tabId === undefined)
+      throw new Error("原标签页已不可用，请在原站核实并登记文章链接。");
+    await patchTask(
+      id,
+      { state: "verifying", step: "正在核实原站结果" },
+      undefined,
+      database,
+    );
+    return task;
   });
 }
 export async function patchTask(

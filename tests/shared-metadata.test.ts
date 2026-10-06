@@ -230,7 +230,7 @@ describe("稿件在各平台的状态", () => {
         [],
         new Set([`csdn:article/draft/${snapshot.fingerprint}`]),
       ),
-    ).toContain("完成记录");
+    ).toContain("防重记录");
     const changed = await freezeSnapshot(
       article,
       setOverride(variant, "title", "换一个标题再发"),

@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "zmatrix-preview",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["vite", "--config", "vite.preview.config.ts", "--host", "localhost"],
+      "port": 5173
+    }
+  ]
+}

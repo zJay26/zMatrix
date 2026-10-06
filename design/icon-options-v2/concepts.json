@@ -1,0 +1,36 @@
+{
+  "type": "logo-concept-exploration",
+  "generator": "image_gen",
+  "concepts": [
+    {
+      "id": "01",
+      "name": "流转",
+      "prompt": "Direction 01: Flow between platforms. One soft continuous, gently tapering ribbon traces a recognisable graceful lowercase z. The top and bottom turns are generous, organically curved; two or three small round terminal nodes are integral parts of the stroke, conveying content moving through destinations. A single confident electric cobalt stroke with a small coral endpoint. Think a fluid handwritten monogram meeting an elegant metro-route symbol; prioritize distinctive crafted silhouette and z readability. No square background."
+    },
+    {
+      "id": "02",
+      "name": "共页",
+      "prompt": "Direction 02: One article, multiple editions. Two soft, folded paper forms interlock diagonally so their shared negative space reveals a z. The z is MADE BY THE GAP between the two pages, not drawn on the pages. Compact balanced asymmetric silhouette, broad soft arcs and rounded folded corners, one indigo sheet and one warm apricot sheet. Minimal flat geometry, clever figure/ground. No document lines, no printed letters, no backdrop tile."
+    },
+    {
+      "id": "03",
+      "name": "连结",
+      "prompt": "Direction 03: Connected creator matrix. Two broad, curved link-like strokes weave together once to form a custom lowercase z-shaped monogram. Top stroke sweeps right, diagonal threads left, bottom gently sweeps right, with very rounded turnarounds and a subtle under-over cut. It must read primarily as an inventive z rather than an infinity sign or S. Deep teal and fresh turquoise. Only two interwoven shapes, a cohesive compact mark, architectural clarity with a soft tactile feel. No dots or tile."
+    },
+    {
+      "id": "04",
+      "name": "回声",
+      "prompt": "Direction 04: Publishing and conversation. Two minimal curved speech-bubble silhouettes facing diagonally opposite directions join into an abstract z monogram, with the z expressed by the contour and shared negative space. Both bubbles have a single short gently rounded tail that contributes to the z diagonal. Friendly, open, cleverly balanced. Rich violet with a small periwinkle secondary form. Strong mark, no added lettering, no multiple pictograms, no rounded-square tile. Avoid a yin-yang appearance."
+    },
+    {
+      "id": "05",
+      "name": "织阵",
+      "prompt": "Direction 05: A matrix woven into z. Four chunky rounded modules of a 2-by-2 grid connect with a single soft diagonal band; through clever negative-space cuts the whole silhouette forms one fluid z while preserving the sense of multiple platform cells. Construct as a compact cohesive custom mark, not a literal diagram. Cobalt blue and turquoise. Rounded organic corners, slightly playful asymmetry, good large counters so the form survives 16px. No surrounding square, no generic pixel-font Z, no 4-by-4 dots."
+    },
+    {
+      "id": "06",
+      "name": "飞笺",
+      "prompt": "Direction 06: A written thought taking flight. A single elegant curling paper strip forms an expressive lowercase z while subtly suggesting a dispatched paper note or small paper bird. Two soft folds, upward sense of movement, asymmetrical sweeping terminals. Japanese-modern editorial logo sensibility, original and understated, flat terracotta with one deeper rust fold plane. The fold and flight should be implied by the z silhouette, never add a paper plane next to a Z. Avoid sharp lightning geometry, calligraphic brush texture, thin flourishes and complexity."
+    }
+  ]
+}

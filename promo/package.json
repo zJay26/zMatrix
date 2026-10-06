@@ -1,0 +1,13 @@
+{
+  "name": "zmatrix-promo",
+  "private": true,
+  "type": "module",
+  "description": "zMatrix 宣传视频：HTML 时间线 + 逐帧渲染",
+  "scripts": {
+    "capture": "node capture-ui.mjs",
+    "render": "node render.mjs"
+  },
+  "dependencies": {
+    "playwright-core": "^1.63.0"
+  }
+}

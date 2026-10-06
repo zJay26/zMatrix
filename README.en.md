@@ -20,7 +20,9 @@
 </p>
 
 > [!IMPORTANT]
-> **v0.5.0 is a developer preview.** Local editing, variants and backups are implemented. None of the 12 real-platform draft/pre-publication acceptance flows have passed yet; live metrics and comments also remain unverified. You always perform the final publication on the platform yourself. See the [acceptance record](docs/acceptance.md).
+> **v0.5.1 is a developer preview.** Local editing, variants and backups are implemented. None of the 12 real-platform draft/pre-publication acceptance flows have passed yet; live metrics and comments also remain unverified. You always perform the final publication on the platform yourself. See the [acceptance record](docs/acceptance.md).
+
+v0.5.1 adds individual and bulk removal of queue tasks awaiting publication, review or result verification. An explicit confirmation abandons task tracking while preserving local articles, platform content and duplicate-publication protection. Running and verifying tasks remain protected from removal. See the [changelog (Chinese)](CHANGELOG.md).
 
 v0.5.0 redesigns the interface and distribution flow: tags, summary and cover are entered once and shared by every platform, platforms are picked and distributed in one step, and there are new overview and accounts pages plus a dark appearance. The new interface has not yet been accepted in a real Edge extension; see the [redesign verification record (Chinese)](docs/verification-redesign-2026-10-02.md). Since v0.4.0, unpacked extensions can update in-app: authorize the current installation folder once, then click Update to download, verify, back up, install and reload. Native Edge folder authorization and cross-version reload still require live acceptance; see the [updater verification record (Chinese)](docs/verification-updater-2026-09-30.md).
 
@@ -79,7 +81,7 @@ Missing settings completed manually do not count as successful automation. Uncer
 
 ## Get started
 
-1. Download the extension ZIP from [Releases](https://github.com/zJay26/zMatrix/releases), such as `zMatrix-edge-0.5.0.zip`, and extract it to a permanent folder.
+1. Download the extension ZIP from [Releases](https://github.com/zJay26/zMatrix/releases), such as `zMatrix-edge-0.5.1.zip`, and extract it to a permanent folder.
 2. Open `edge://extensions`, enable **Developer mode**, select **Load unpacked**, and choose the folder containing `manifest.json`.
 3. Open **zMatrix** from the browser toolbar. Connect platforms on the accounts page, try writing and distributing the sample article, then configure backups as needed.
 

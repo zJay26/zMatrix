@@ -6,8 +6,10 @@ import {
 } from "../src/core/installation-state";
 import { sha256 } from "../src/core/variants";
 import { version } from "../package.json";
+import { enqueue, patchTask, removeTasks } from "../src/core/tasks";
+import { fixture } from "./helpers";
 
-const adapter = vi.hoisted(() => ({ checkSession: vi.fn() }));
+const adapter = vi.hoisted(() => ({ checkSession: vi.fn(), verify: vi.fn() }));
 vi.mock("wxt/utils/define-background", () => ({
   defineBackground: (fn: unknown) => fn,
 }));
@@ -47,6 +49,7 @@ beforeEach(async () => {
   liveVersion = version;
   contexts = [{ documentUrl: base, tabId: 7 }];
   adapter.checkSession.mockReset();
+  adapter.verify.mockReset();
   adapter.checkSession.mockResolvedValue({ channel: "zhihu:article" });
   vi.stubGlobal("chrome", {
     runtime: {
@@ -73,6 +76,56 @@ beforeEach(async () => {
     },
     alarms: { onAlarm: event() },
     action: { onClicked: event() },
+  });
+});
+
+describe("队列核实与清理协调", () => {
+  it("核实过程中禁止清理，结果不明确时恢复原等待状态", async () => {
+    const [task] = await enqueue([await fixture(undefined, db)], "publish", db);
+    await patchTask(task!.id, { state: "awaiting_publish", tabId: 123 });
+    let resolve!: (result: object) => void;
+    adapter.verify.mockImplementation(
+      () =>
+        new Promise((done) => {
+          resolve = done;
+        }),
+    );
+    (startBackground as unknown as () => void)();
+    const pending = call({ type: "verify", id: task!.id });
+    await vi.waitFor(() => expect(adapter.verify).toHaveBeenCalledOnce());
+    expect((await db.tasks.get(task!.id))?.state).toBe("verifying");
+    await expect(
+      removeTasks([task!.id], db, { abandonIds: [task!.id] }),
+    ).rejects.toThrow("正在执行");
+    expect(await call({ type: "verify", id: task!.id })).toMatchObject({
+      ok: false,
+    });
+    resolve({ status: "uncertain", detail: "未发现发布结果" });
+    expect(await pending).toMatchObject({ ok: true });
+    expect((await db.tasks.get(task!.id))?.state).toBe("awaiting_publish");
+    await removeTasks([task!.id], db, { abandonIds: [task!.id] });
+    expect(await db.tasks.count()).toBe(0);
+  });
+  it("核实失败恢复原状态，不留下无法清理的执行锁", async () => {
+    const [task] = await enqueue([await fixture(undefined, db)], "publish", db);
+    await patchTask(task!.id, {
+      state: "uncertain",
+      tabId: 123,
+      step: "待核实",
+    });
+    adapter.verify.mockRejectedValue(new Error("标签页已关闭"));
+    (startBackground as unknown as () => void)();
+    expect(await call({ type: "verify", id: task!.id })).toMatchObject({
+      ok: false,
+      error: "标签页已关闭",
+    });
+    expect(await db.tasks.get(task!.id)).toMatchObject({
+      state: "uncertain",
+      step: "待核实",
+      error: "标签页已关闭",
+    });
+    await removeTasks([task!.id], db, { abandonIds: [task!.id] });
+    expect(await db.tasks.count()).toBe(0);
   });
 });
 afterEach(async () => {

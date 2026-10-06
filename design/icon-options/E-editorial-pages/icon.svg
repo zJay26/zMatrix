@@ -1,0 +1,4 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128" role="img" aria-label="zMatrix — 叠页"><title>zMatrix — 叠页</title><rect x="4" y="4" width="120" height="120" rx="30" fill="#F2B34F"/><rect x="36" y="27" width="69" height="84" rx="10" transform="rotate(10 70 69)" fill="#B96926"/>
+      <path d="M31 20H75L94 39V98Q94 106 85 106H31Q23 106 23 98V28Q23 20 31 20Z" fill="#FFFCF6"/>
+      <path d="M75 20V32Q75 40 83 40H94Z" fill="#F7D894"/>
+      <path d="M38 49H79V61L54 78H79V90H38V78L63 61H38Z" fill="#80512B"/></svg>

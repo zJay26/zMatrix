@@ -1,0 +1,55 @@
+{
+  "type": "logo-concept-variants",
+  "reference": "../icon-options-v2/05.png",
+  "generator": "image_gen",
+  "concepts": [
+    {
+      "id": "A",
+      "name": "圆瓣共生",
+      "note": "四片圆瓣围合，z 从中心自然显现。",
+      "prompt": "Construct FOUR broad leaf/petal-like modules with softly pointed inner tips and fully curved outside edges, arranged as an offset four-leaf clover matrix. The petals nest together around a flowing z-shaped white/transparent channel. The overall outline is a distinctive soft clover, not a rounded square. Gentle rotational movement, balanced not floral illustration, large clear counters. Alternate cobalt and turquoise. Retain asymmetry needed for the z to read horizontally."
+    },
+    {
+      "id": "B",
+      "name": "斜向织阵",
+      "note": "错位模块沿斜向展开，强调内容流动。",
+      "prompt": "Construct FOUR pill-ended diagonal parallelogram modules staggered in a 2x2 matrix, all leaning forward about 20 degrees. Their interlocking inner edges create a sweeping z negative-space path. Overall silhouette is a compact slanted woven lozenge with soft capsule ends, clearly faster and more directional than reference. NO four rounded-square blocks. Blue upper-left/lower-right and turquoise opposite modules. Keep z readable and rounded, not lightning."
+    },
+    {
+      "id": "C",
+      "name": "节点连桥",
+      "note": "四个节点与连接桥组成 z，突出平台协作。",
+      "prompt": "Make FOUR solid rounded platform nodes in a 2x2 arrangement and integrate THREE short broad curved bridges. Nodes and bridges must form ONE coherent connected z-shaped route, while a z-like channel also remains legible inside. Bridges are equal visual weight to nodes, no thin connector diagram. The overall silhouette has four circular lobes with an open central diagonal crossing, a soft network monogram. Cobalt core, turquoise on two connected destination nodes. Avoid a plain bubble letter and avoid recreating reference blocks."
+    },
+    {
+      "id": "D",
+      "name": "双带交织",
+      "note": "两条宽带上下穿插，编织出矩阵关系。",
+      "prompt": "Create TWO broad flat ribbons that interweave once, then each folds into two rounded corner loops; together the four resulting lobes suggest a 2x2 matrix. The shared central opening must be a graceful z. Show a single clean over-under interruption via a narrow negative-space cut, not shading. Overall mark is an elegant compact woven knot, FOUR balanced rounded loops, blue ribbon versus turquoise ribbon. No infinity symbol, no simple S, no square tile; z must remain identifiable."
+    },
+    {
+      "id": "E",
+      "name": "开放窗格",
+      "note": "四扇开放窗口共同框出 z，留白更轻盈。",
+      "prompt": "Use FOUR thick open rounded corner/window forms arranged as a 2x2 matrix. Each module has a LARGE open interior rather than being a solid block. Their open sides and inner edges align to form an unobstructed diagonal z path through the center. Architectural clarity, almost four soft brackets woven into one z emblem. Overall outline approximately square with generous open gaps, thinner visual weight than reference but still thick strokes. Flat cobalt and turquoise. Do not draw a Z over the windows."
+    },
+    {
+      "id": "F",
+      "name": "错页成阵",
+      "note": "四张错位纸页，连接母稿与平台版本。",
+      "prompt": "Use FOUR compact stylized PAPER-SHEET forms arranged as a staggered 2x2 matrix, with subtly curved paper corners and only one small flat folded-corner detail in the whole mark. The gaps between the four sheets make one broad flowing z, describing a master article and its platform editions. Overall silhouette like a neatly fanned stack of pages viewed from above, no perspective, no document lines, no printed Z. Visibly editorial and paper-like, not generic rounded app squares. Two-color cobalt/turquoise."
+    },
+    {
+      "id": "G",
+      "name": "回环矩阵",
+      "note": "回环单元相互扣合，表现持续流转。",
+      "prompt": "Build FOUR thick C-shaped curved loops, arranged in a 2x2 matrix, with openings oriented to create a continuous z-shaped negative-space corridor. The loops partly nest like interlocking links but remain geometrically simple; FOUR large oval counters make the mark visibly airy and distinctive. Rounded flowing compact silhouette, no solid square modules, no pretzel complexity. Dark cobalt and turquoise alternate diagonally. Ensure the central z is obvious before the loops are noticed."
+    },
+    {
+      "id": "H",
+      "name": "单色留白",
+      "note": "用单一轮廓和 z 形留白，追求简洁辨识。",
+      "prompt": "Create the strongest MINIMAL MONOCHROME interpretation: one continuous deep cobalt silhouette with four soft lobes suggesting the 2x2 platform matrix. Carve a single broad fluid custom lowercase-z negative-space channel through it, with two tiny intentional perimeter separations to hint at four modules. Use ONLY ONE flat cobalt color and true transparent negative space. Distinctive asymmetrical rounded outline, gently pinched waist, no full rounded-square background, no stroke outline. This is a refined compact iconic silhouette, not merely recoloring the supplied reference."
+    }
+  ]
+}

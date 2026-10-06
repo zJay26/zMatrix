@@ -102,7 +102,47 @@ it("已有目录时点击立即更新才启动，重复点击在执行期间禁�
     { name: "edge-mv3" },
   );
   expect(install.disabled).toBe(true);
+  expect(install.textContent).toBe("正在准备更新…");
+  expect(container.querySelector('[role="status"]')?.textContent).toContain(
+    "正在准备更新",
+  );
   await act(async () => resolve());
+  expect(install.disabled).toBe(false);
+  expect(install.textContent).toBe("立即更新至 v9.0.0");
+});
+it("安装中断会显示错误，不能被当作取消目录选择而静默忽略", async () => {
+  await db.meta.put({ key: INSTALL_DIRECTORY, value: { name: "edge-mv3" } });
+  installer.installRelease.mockRejectedValue(
+    new DOMException("Aborted", "AbortError"),
+  );
+  await render();
+  await act(async () =>
+    buttons()
+      .find((button) => button.textContent === "立即更新至 v9.0.0")!
+      .click(),
+  );
+  expect(container.textContent).toContain(
+    "更新已中断，请检查网络及目录权限后重试。",
+  );
+  expect(
+    buttons().find((button) => button.textContent === "立即更新至 v9.0.0")
+      ?.disabled,
+  ).toBe(false);
+});
+it("取消目录选择不显示安装错误，恢复设置按钮", async () => {
+  installer.chooseInstallationDirectory.mockRejectedValue(
+    new DOMException("Cancelled", "AbortError"),
+  );
+  await render();
+  await act(async () =>
+    buttons()
+      .find((button) => button.textContent === "设置目录")!
+      .click(),
+  );
+  expect(container.querySelector('[role="alert"]')).toBeNull();
+  expect(
+    buttons().find((button) => button.textContent === "设置目录")?.disabled,
+  ).toBe(false);
 });
 it("网页预览仍提供手动下载，不能安装扩展文件", async () => {
   vi.stubGlobal("chrome", undefined);

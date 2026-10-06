@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128" role="img" aria-label="zMatrix — 一稿多发"><title>zMatrix — 一稿多发</title><path d="M51 64H73M73 30V98M73 30H95M73 64H95M73 98H95" fill="none" stroke="#218C80" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
+      <rect x="6" y="39" width="50" height="50" rx="17" fill="#218C80"/>
+      <path d="M18 51H44V58L28 70H44V77H18V70L34 58H18Z" fill="#fff"/>
+      <rect x="88" y="16" width="28" height="28" rx="9" fill="#42AF9B"/>
+      <rect x="88" y="50" width="28" height="28" rx="9" fill="#218C80"/>
+      <rect x="88" y="84" width="28" height="28" rx="9" fill="#86C9BA"/></svg>

@@ -37,6 +37,7 @@ export function UpdateSettings({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [installBusy, setInstallBusy] = useState(false);
+  const [installStatus, setInstallStatus] = useState("");
   const directoryEntry = useLiveQuery(() => db.meta.get(INSTALL_DIRECTORY));
   const directory = directoryEntry?.value as
     FileSystemDirectoryHandle | undefined;
@@ -44,16 +45,35 @@ export function UpdateSettings({
   const lastUpdate = result?.value as
     { version: string; at: number } | undefined;
   const canInstall = isExtension() && "showDirectoryPicker" in window;
-  const installAction = async (action: () => Promise<unknown>) => {
+  const installAction = async (
+    action: () => Promise<unknown>,
+    choosingDirectory = false,
+  ) => {
     setInstallBusy(true);
     setError("");
+    setInstallStatus(
+      choosingDirectory
+        ? "请选择 Edge 当前加载的扩展目录，并允许读写。"
+        : "正在准备更新，请完成浏览器的目录授权；随后将核对安装目录。",
+    );
     try {
       await action();
     } catch (e) {
-      if (!(e instanceof DOMException && e.name === "AbortError"))
-        setError(messageOf(e));
+      // Only closing the directory picker is a deliberate cancellation.
+      // A download or install AbortError must remain visible to the user.
+      if (!(
+        choosingDirectory &&
+        e instanceof DOMException &&
+        e.name === "AbortError"
+      ))
+        setError(
+          e instanceof DOMException && e.name === "AbortError"
+            ? "更新已中断，请检查网络及目录权限后重试。"
+            : messageOf(e),
+        );
     } finally {
       setInstallBusy(false);
+      setInstallStatus("");
     }
   };
   const release = state?.release;
@@ -112,6 +132,12 @@ export function UpdateSettings({
         </button>
       </div>
       {(error || state?.error) && <Alert>{error || state?.error}</Alert>}
+      {installBusy && (
+        <div className="update-choice" role="status" aria-live="polite">
+          <RefreshCw size={17} className="spin" />
+          <span>{installStatus}</span>
+        </div>
+      )}
       {lastUpdate?.version === version && (
         <div className="update-choice" role="status">
           <Check size={17} />
@@ -159,7 +185,7 @@ export function UpdateSettings({
         </span>
         <button
           disabled={!canInstall || installBusy || busy}
-          onClick={() => void installAction(chooseInstallationDirectory)}
+          onClick={() => void installAction(chooseInstallationDirectory, true)}
         >
           <FolderOpen size={17} />
           {directory ? "更换目录" : "设置目录"}
@@ -188,8 +214,13 @@ export function UpdateSettings({
                   void installAction(() => installRelease(release, directory))
                 }
               >
-                <RefreshCw size={17} />
-                立即更新至 v{release.version}
+                <RefreshCw
+                  size={17}
+                  className={installBusy ? "spin" : undefined}
+                />
+                {installBusy
+                  ? "正在准备更新…"
+                  : `立即更新至 v${release.version}`}
               </button>
             )}
             {release.downloadUrl && (

@@ -15,6 +15,7 @@ import { db } from "../core/db";
 import {
   canStart,
   canRemoveTask,
+  canAbandonTask,
   removeTasks,
   hasRemoteActivity,
   stateNames,
@@ -70,6 +71,8 @@ const badgeOf = (task: Task) =>
     : task.state === "draft_saved"
       ? "draft"
       : "muted");
+const canClearTask = (task: Task) =>
+  canRemoveTask(task) || canAbandonTask(task);
 
 export function QueuePage({ onOpenLibrary }: { onOpenLibrary?: () => void }) {
   const tasks = useLiveQuery(
@@ -83,7 +86,10 @@ export function QueuePage({ onOpenLibrary }: { onOpenLibrary?: () => void }) {
   const [busy, setBusy] = useState(false);
   const [group, setGroup] = useState<Group>("pending");
   const [selected, setSelected] = useState<string[]>([]);
-  const [deletion, setDeletion] = useState<string[] | null>(null);
+  const [deletion, setDeletion] = useState<{
+    ids: string[];
+    abandonIds: string[];
+  } | null>(null);
   const [channel, setChannel] = useState("all");
   const [query, setQuery] = useState("");
   const [limit, setLimit] = useState(30);
@@ -107,11 +113,18 @@ export function QueuePage({ onOpenLibrary }: { onOpenLibrary?: () => void }) {
     channels.findIndex((item) => item.id === task.channel);
   for (const batch of batches) batch.tasks.sort((a, b) => order(a) - order(b));
   const runnable = filtered.filter(canStart);
-  const removable = filtered.filter(canRemoveTask);
+  const removable = filtered.filter(canClearTask);
   const selectedIds = removable
     .filter((t) => selected.includes(t.id))
     .map((t) => t.id);
-  const visibleRemovable = shown.filter(canRemoveTask);
+  const visibleRemovable = shown.filter(canClearTask);
+  const requestDeletion = (ids: string[]) =>
+    setDeletion({
+      ids,
+      abandonIds: tasks
+        .filter((task) => ids.includes(task.id) && canAbandonTask(task))
+        .map((task) => task.id),
+    });
   useEffect(() => setSelected([]), [group, channel, query]);
   const act = async (message: unknown) => {
     setBusy(true);
@@ -249,7 +262,8 @@ export function QueuePage({ onOpenLibrary }: { onOpenLibrary?: () => void }) {
           {!!selectedIds.length && (
             <button
               className="danger-text"
-              onClick={() => setDeletion(selectedIds)}
+              disabled={busy}
+              onClick={() => requestDeletion(selectedIds)}
             >
               <Trash2 size={15} />
               移除所选（{selectedIds.length}）
@@ -258,7 +272,8 @@ export function QueuePage({ onOpenLibrary }: { onOpenLibrary?: () => void }) {
           {group === "done" && (
             <button
               className="text-button"
-              onClick={() => setDeletion(removable.map((t) => t.id))}
+              disabled={busy}
+              onClick={() => requestDeletion(removable.map((t) => t.id))}
             >
               清理当前筛选的历史（{removable.length}）
             </button>
@@ -313,7 +328,7 @@ export function QueuePage({ onOpenLibrary }: { onOpenLibrary?: () => void }) {
                   {batch.tasks.map((task) => (
                     <li key={task.id} className="task-row">
                       <div className="task-row-main">
-                        {canRemoveTask(task) && (
+                        {canClearTask(task) && (
                           <input
                             type="checkbox"
                             aria-label={`选择任务 ${task.snapshot.title} ${channelFor(task.channel).short}`}
@@ -380,14 +395,18 @@ export function QueuePage({ onOpenLibrary }: { onOpenLibrary?: () => void }) {
                               <ExternalLink size={14} />
                             </a>
                           )}
-                          {canRemoveTask(task) && (
+                          {canClearTask(task) && (
                             <button
                               className="text-button danger-text"
                               disabled={busy}
-                              onClick={() => setDeletion([task.id])}
+                              onClick={() => requestDeletion([task.id])}
                             >
                               <Trash2 size={14} />
-                              {canStart(task) ? "取消并移除" : "删除记录"}
+                              {canAbandonTask(task)
+                                ? "放弃跟踪并移除"
+                                : canStart(task)
+                                  ? "取消并移除"
+                                  : "删除记录"}
                             </button>
                           )}
                         </div>
@@ -430,17 +449,30 @@ export function QueuePage({ onOpenLibrary }: { onOpenLibrary?: () => void }) {
       )}
       {deletion && (
         <ConfirmDialog
-          title={`移除 ${deletion.length} 条任务记录？`}
-          confirmLabel="确认移除"
+          title={`移除 ${deletion.ids.length} 条任务记录？`}
+          confirmLabel={
+            deletion.abandonIds.length ? "放弃跟踪并移除" : "确认移除"
+          }
           onClose={() => setDeletion(null)}
           onConfirm={async () => {
-            await removeTasks(deletion);
+            await removeTasks(deletion.ids, db, {
+              abandonIds: deletion.abandonIds,
+            });
             setSelected([]);
             notify("任务记录已移除，原站内容和发布登记不受影响。");
           }}
         >
+          {!!deletion.abandonIds.length && (
+            <p>
+              其中 {deletion.abandonIds.length}{" "}
+              条任务的原站结果尚未确认。移除后将放弃这些任务的结果核实，无法再从队列继续处理。
+            </p>
+          )}
           <p>
-            未开始的任务将取消，已结束的记录会从列表移除。已完成内容的防重复发布保护仍然保留。
+            仅移除本地任务记录，不会撤回或删除原站内容，也不会关闭原站标签页。内容库稿件和发布登记保留。
+          </p>
+          <p>
+            未开始的任务将取消，可重新加入队列。已完成或放弃跟踪的任务保留防重复发布保护，相同版本仍不能重复排队。
           </p>
         </ConfirmDialog>
       )}

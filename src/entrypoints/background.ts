@@ -1,7 +1,12 @@
 import { defineBackground } from "wxt/utils/define-background";
 import { db, changed } from "../core/db";
 import { adapterFor } from "../platforms/browser-adapter";
-import { claimTask, patchTask, recoverTask } from "../core/tasks";
+import {
+  claimTask,
+  claimTaskVerification,
+  patchTask,
+  recoverTask,
+} from "../core/tasks";
 import {
   messageOf,
   uid,
@@ -369,28 +374,35 @@ export default defineBackground(() => {
         if (request.type === "verify") {
           if (running || collectionRunning)
             throw new Error("已有任务运行，请稍后核实。");
-          const task = await db.tasks.get(request.id);
-          if (!task?.tabId)
-            throw new Error("原标签页已不可用，请在原站核实并登记文章链接。");
-          const receipt = await adapterFor(task.channel).verify(
-            { tabId: task.tabId, channel: task.channel, taskId: task.id },
-            task.snapshot,
-            task.prepared,
-            task.mode,
-          );
-          if (
-            receipt.status === "uncertain" &&
-            !receipt.remoteId &&
-            !receipt.url &&
-            (task.state === "awaiting_publish" ||
-              task.state === "awaiting_review")
-          ) {
-            receipt.status = task.state;
-            receipt.detail =
-              "尚未核实到发布结果，保留等待状态。最终发布需在原站手动完成。";
+          const task = await claimTaskVerification(request.id);
+          try {
+            const receipt = await adapterFor(task.channel).verify(
+              { tabId: task.tabId!, channel: task.channel, taskId: task.id },
+              task.snapshot,
+              task.prepared,
+              task.mode,
+            );
+            if (
+              receipt.status === "uncertain" &&
+              !receipt.remoteId &&
+              !receipt.url &&
+              (task.state === "awaiting_publish" ||
+                task.state === "awaiting_review")
+            ) {
+              receipt.status = task.state;
+              receipt.detail =
+                "尚未核实到发布结果，保留等待状态。最终发布需在原站手动完成。";
+            }
+            await record(task, receipt);
+            return { ok: true };
+          } catch (error) {
+            await patchTask(task.id, {
+              state: task.state,
+              step: task.step,
+              error: messageOf(error),
+            });
+            throw error;
           }
-          await record(task, receipt);
-          return { ok: true };
         }
         if (request.type === "refresh") {
           if (running || collectionRunning)

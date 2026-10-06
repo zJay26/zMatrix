@@ -4,7 +4,13 @@ import { database, fixture, imageFile } from "./helpers";
 import { WorkbenchDB, saveArticle, saveVariant } from "../src/core/db";
 import { addAsset } from "../src/core/assets";
 import { newVariant } from "../src/core/variants";
-import { enqueue, claimTask, removeTasks, patchTask } from "../src/core/tasks";
+import {
+  enqueue,
+  claimTask,
+  claimTaskVerification,
+  removeTasks,
+  patchTask,
+} from "../src/core/tasks";
 import {
   trashArticles,
   restoreArticles,
@@ -124,6 +130,111 @@ describe("清理与数据保护", () => {
     } finally {
       await target.delete();
     }
+  });
+  it.each([
+    "queued",
+    "paused",
+    "failed",
+    "cancelled",
+    "uncertain",
+    "awaiting_publish",
+    "awaiting_review",
+    "submitted",
+    "reviewing",
+  ] as const)("%s 可明确放弃跟踪，保留稿件、登记及防重凭据", async (state) => {
+    const f = await fixture(undefined, db);
+    const [task] = await enqueue([f], "publish", db);
+    await patchTask(task!.id, { state, tabId: 123 }, undefined, db);
+    const post = await registerPost(
+      "https://blog.csdn.net/demo/article/details/123",
+      f.article.title,
+      f.snapshot.channel,
+      f.article.id,
+      f.snapshot,
+      db,
+    );
+    await expect(removeTasks([task!.id], db)).rejects.toThrow("核实");
+    await removeTasks([task!.id], db, { abandonIds: [task!.id] });
+    expect(await db.tasks.count()).toBe(0);
+    expect(await db.articles.get(f.article.id)).toEqual(f.article);
+    expect(await db.posts.get(post.id)).toEqual(post);
+    expect(await db.taskReceipts.count()).toBe(1);
+    await expect(enqueue([f], "publish", db)).rejects.toThrow("防重记录");
+  });
+  it("放弃跟踪的防重凭据随备份恢复，不能被旧任务绕过", async () => {
+    const f = await fixture(undefined, db);
+    const [task] = await enqueue([f], "publish", db);
+    const oldBackup = await exportBackup(db);
+    await patchTask(task!.id, { state: "uncertain" }, undefined, db);
+    await removeTasks([task!.id], db, { abandonIds: [task!.id] });
+    const target = database();
+    try {
+      await restoreBackup(await exportBackup(db), target);
+      await expect(enqueue([f], "publish", target)).rejects.toThrow("防重记录");
+      await restoreBackup(oldBackup, target);
+      expect(await claimTask(task!.id, "worker", target)).toBeUndefined();
+    } finally {
+      await target.delete();
+    }
+  });
+  it.each(["preparing", "submitting", "verifying"] as const)(
+    "%s 不能放弃跟踪，混合批量清理整体回滚",
+    async (state) => {
+      const f = await fixture(undefined, db);
+      const other = await fixture("zhihu:article", db);
+      const tasks = await enqueue([other, f], "publish", db);
+      await patchTask(
+        tasks[0]!.id,
+        { state: "awaiting_publish" },
+        undefined,
+        db,
+      );
+      await patchTask(tasks[1]!.id, { state }, undefined, db);
+      const ids = tasks.map((t) => t.id);
+      await expect(removeTasks(ids, db, { abandonIds: ids })).rejects.toThrow(
+        "正在执行",
+      );
+      expect(await db.tasks.count()).toBe(2);
+      expect(await db.taskReceipts.count()).toBe(0);
+    },
+  );
+  it("普通删除确认后出现原站活动，不能借同批其他任务的授权移除", async () => {
+    const first = await fixture(undefined, db);
+    const second = await fixture("zhihu:article", db);
+    const [a, b] = await enqueue([first, second], "publish", db);
+    await patchTask(a!.id, { state: "awaiting_publish" }, undefined, db);
+    await patchTask(b!.id, { state: "failed", tabId: 123 }, undefined, db);
+    await expect(
+      removeTasks([a!.id, b!.id], db, {
+        abandonIds: [a!.id],
+      }),
+    ).rejects.toThrow("核实");
+    expect(await db.tasks.count()).toBe(2);
+  });
+  it("核实领取和清理互斥，已移除记录不会被迟到的更新复活", async () => {
+    const f = await fixture(undefined, db);
+    const [task] = await enqueue([f], "publish", db);
+    await patchTask(
+      task!.id,
+      { state: "awaiting_publish", tabId: 123 },
+      undefined,
+      db,
+    );
+    const original = await claimTaskVerification(task!.id, db);
+    expect(original.state).toBe("awaiting_publish");
+    await expect(claimTaskVerification(task!.id, db)).rejects.toThrow(
+      "正在执行或核实",
+    );
+    await expect(
+      removeTasks([task!.id], db, { abandonIds: [task!.id] }),
+    ).rejects.toThrow("正在执行");
+    await patchTask(task!.id, { state: "uncertain" }, undefined, db);
+    await removeTasks([task!.id], db, { abandonIds: [task!.id] });
+    await expect(claimTaskVerification(task!.id, db)).rejects.toThrow("不存在");
+    await expect(
+      patchTask(task!.id, { state: "published" }, undefined, db),
+    ).rejects.toThrow("不存在");
+    expect(await db.tasks.count()).toBe(0);
   });
   it("取消并移除未执行任务后，可以主动重新排队", async () => {
     const f = await fixture(undefined, db);
