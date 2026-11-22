@@ -103,9 +103,7 @@ export function installCnblogsHandoff() {
       state.token === message.token
     ) {
       state.phase = "ready";
-      show(
-        "zMatrix 已停在发布前。只有你点击原站的“发布”或“存为草稿”才会提交。",
-      );
+      show("内容已填入。你可以继续编辑，也可以点击原站的“存为草稿”或“发布”。");
       respond?.({ ok: true });
     }
   };

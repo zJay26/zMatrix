@@ -102,11 +102,31 @@ describe("任务恢复与重复提交", () => {
   });
   it("等待手动发布或核对的任务在重启后保持暂停边界，不能重复执行", async () => {
     const [task] = await enqueue([await fixture(undefined, db)], "publish", db);
-    for (const state of ["awaiting_publish", "awaiting_review"] as const) {
+    for (const state of [
+      "filled",
+      "awaiting_publish",
+      "awaiting_review",
+    ] as const) {
       const waiting = { ...task!, state, tabId: 42 };
       expect(recoverTask(waiting).state).toBe(state);
       expect(canStart(waiting)).toBe(false);
     }
+  });
+  it("旧草稿与发布任务在升级后只填入一次", async () => {
+    const f = await fixture(undefined, db);
+    const [oldDraft] = await enqueue([f], "draft", db);
+    const oldPublish = {
+      ...oldDraft!,
+      id: "legacy-publish",
+      mode: "publish" as const,
+    };
+    await db.tasks.add(oldPublish);
+    expect(await claimTask(oldDraft!.id, "worker", db)).toMatchObject({
+      mode: "fill",
+    });
+    await patchTask(oldDraft!.id, { state: "filled", tabId: 7 }, undefined, db);
+    expect(await claimTask(oldPublish.id, "worker", db)).toBeUndefined();
+    expect((await db.tasks.get(oldPublish.id))?.state).toBe("cancelled");
   });
   it("同批次重复任务不写入任何记录", async () => {
     const f = await fixture(undefined, db);
@@ -130,7 +150,7 @@ describe("任务恢复与重复提交", () => {
       "uncertain",
     );
   });
-  it("已成功的相同发布版本禁止重复排队，草稿和发布分别管理", async () => {
+  it("旧版已发布的相同内容不能再次排队填入", async () => {
     const f = await fixture(undefined, db);
     const [task] = await enqueue([f], "publish", db);
     await patchTask(
@@ -140,6 +160,6 @@ describe("任务恢复与重复提交", () => {
       db,
     );
     await expect(enqueue([f], "publish", db)).rejects.toThrow("已有任务");
-    await expect(enqueue([f], "draft", db)).resolves.toHaveLength(1);
+    await expect(enqueue([f], "fill", db)).rejects.toThrow("已有任务");
   });
 });

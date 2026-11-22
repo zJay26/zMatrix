@@ -1,5 +1,5 @@
 // A UI loaded from replaced files must not send a run request to an old worker.
-export const MANUAL_PUBLISH_PROTOCOL = 2;
+export const MANUAL_PUBLISH_PROTOCOL = 3;
 export const RELOAD_EXTENSION =
   "工作台与扩展后台版本不一致。请先暂停队列，在 Edge 扩展管理中重新加载 zMatrix，再重新打开工作台。";
 

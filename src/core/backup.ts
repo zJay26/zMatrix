@@ -107,7 +107,7 @@ const schema = z.object({
       id,
       batchId: id,
       channel,
-      mode: z.enum(["draft", "publish"]),
+      mode: z.enum(["fill", "draft", "publish"]),
       snapshot,
       prepared: z.object({
         markdown: text,
@@ -137,7 +137,7 @@ const schema = z.object({
       z.object({
         id,
         channel,
-        mode: z.enum(["draft", "publish"]),
+        mode: z.enum(["fill", "draft", "publish"]),
         fingerprint: id,
         recordedAt: timestamp,
       }),

@@ -2,6 +2,7 @@ import { act, createElement as h } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { db } from "../src/core/db";
+import { BatchDistributeDialog } from "../src/ui/BatchDistributeDialog";
 import { App } from "../src/ui/App";
 import { MetadataFields } from "../src/ui/MetadataFields";
 import { savePreferences } from "../src/core/preferences";
@@ -153,21 +154,23 @@ describe("精简工作流界面", () => {
       for (const label of Array.from(field.querySelectorAll("label")))
         expect(field.contains(label.control)).toBe(true);
   });
-  it("发布平台与方式记住选择，并过滤手动路径和无效值", async () => {
+  it("分发面板记住平台，并过滤手动路径和无效值", async () => {
     expect(
       normalizePublishSelection({
         selected: ["csdn:article", "linuxdo:topic", "csdn:article", "bad"],
       }).selected,
     ).toEqual(["csdn:article"]);
-    await savePublishSelection(["csdn:article"], "publish");
+    await db.meta.put({
+      key: "publishSelection",
+      value: { selected: ["csdn:article"], mode: "publish" },
+    });
     expect(await getPublishSelection()).toEqual({
       selected: ["csdn:article"],
-      mode: "publish",
     });
   });
   it("使用记住的平台直接排队后，本篇也保留该平台版本", async () => {
     await fixture(undefined, db);
-    await savePublishSelection(["zhihu:article"], "draft");
+    await savePublishSelection(["zhihu:article"]);
     await renderApp();
     await vi.waitFor(async () => {
       await settle();
@@ -177,9 +180,9 @@ describe("精简工作流界面", () => {
     await click(button("分发到平台"));
     await vi.waitFor(async () => {
       await settle();
-      expect(button("加入队列，稍后执行").disabled).toBe(false);
+      expect(button("填入平台").disabled).toBe(false);
     });
-    await click(button("加入队列，稍后执行"));
+    await click(button("填入平台"));
     await vi.waitFor(async () => {
       await settle();
       expect(await db.tasks.count()).toBe(1);
@@ -187,6 +190,37 @@ describe("精简工作流界面", () => {
     expect((await db.variants.toArray()).map((v) => v.channel)).toEqual([
       "zhihu:article",
     ]);
+  });
+  it("批量分发使用一个填入按钮，允许在原站补充发布字段", async () => {
+    const one = await fixture(undefined, db);
+    const two = await fixture(undefined, db);
+    await db.articles.update(two.article.id, { title: "另一篇本地验收稿" });
+    await savePublishSelection(["juejin:article"]);
+    await act(async () =>
+      root.render(
+        h(BatchDistributeDialog, {
+          articleIds: [one.article.id, two.article.id],
+          onClose: () => {},
+          onOpen: () => {},
+          onQueue: () => {},
+        }),
+      ),
+    );
+    await vi.waitFor(async () => {
+      await settle();
+      expect(button("填入平台").disabled).toBe(false);
+    });
+    expect(container.querySelectorAll(".modal-actions button")).toHaveLength(1);
+    await click(button("填入平台"));
+    await vi.waitFor(async () => {
+      await settle();
+      expect(await db.tasks.count()).toBe(2);
+    });
+    const tasks = await db.tasks.toArray();
+    expect(tasks.map((task) => task.mode)).toEqual(["fill", "fill"]);
+    expect(new Set(tasks.map((task) => task.snapshot.articleId))).toEqual(
+      new Set([one.article.id, two.article.id]),
+    );
   });
   it("缺失字段在分发面板补齐，未回车的标签直接排队也会保存，并可从界面取消移除", async () => {
     await fixture(undefined, db);
@@ -210,11 +244,9 @@ describe("精简工作流界面", () => {
         .find((el) => el.textContent?.includes("CSDN"))!
         .querySelector("input")!,
     );
-    await click(button("准备发布，手动确认"));
-    await vi.waitFor(async () => {
-      await settle();
-      expect(container.textContent).toContain("请填写标签");
-    });
+    expect(container.textContent).not.toContain("准备发布，手动确认");
+    expect(container.textContent).not.toContain("加入队列，稍后执行");
+    expect(button("填入平台").disabled).toBe(false);
     await input(
       container
         .querySelector<HTMLDivElement>('[role="dialog"]')!
@@ -223,7 +255,7 @@ describe("精简工作流界面", () => {
         )!,
       "发布测试",
     );
-    await click(button("加入队列，稍后执行"));
+    await click(button("填入平台"));
     await vi.waitFor(async () => {
       await settle();
       expect(container.textContent).toContain("取消并移除");
@@ -264,10 +296,15 @@ describe("精简工作流界面", () => {
         )!,
       "一次填写",
     );
-    await click(button("加入队列，稍后执行"));
+    await click(button("填入平台"));
     await vi.waitFor(async () => {
       await settle();
-      expect(await db.tasks.count()).toBe(6);
+      expect(await db.tasks.count()).toBe(5);
+      expect(
+        (await db.tasks.toArray()).every(
+          (t) => t.mode === "fill" && t.channel !== "xiaohongshu:note",
+        ),
+      ).toBe(true);
     });
     expect((await db.articles.toArray())[0]?.defaults?.tags).toEqual([
       "一次填写",
@@ -280,7 +317,7 @@ describe("精简工作流界面", () => {
     await vi.waitFor(async () => {
       await settle();
       expect(container.querySelectorAll(".task-card")).toHaveLength(1);
-      expect(container.querySelectorAll(".task-row")).toHaveLength(6);
+      expect(container.querySelectorAll(".task-row")).toHaveLength(5);
     });
   });
 });

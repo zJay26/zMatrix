@@ -1,13 +1,6 @@
 import { useEffect, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
-import {
-  Check,
-  FileCheck2,
-  LoaderCircle,
-  Minus,
-  Send,
-  TriangleAlert,
-} from "lucide-react";
+import { Check, LoaderCircle, Minus, Send, TriangleAlert } from "lucide-react";
 import { db, saveVariant } from "../core/db";
 import { channels } from "../platforms/catalog";
 import { isExtension } from "../platforms/browser-adapter";
@@ -18,17 +11,11 @@ import {
   getPublishSelection,
   savePublishSelection,
 } from "../core/publish-preferences";
-import {
-  messageOf,
-  type Article,
-  type ChannelId,
-  type Mode,
-} from "../core/model";
+import { messageOf, type Article, type ChannelId } from "../core/model";
 import {
   Alert,
   Modal,
   PlatformIcon,
-  Segmented,
   command,
   untitled,
   useNotify,
@@ -78,7 +65,6 @@ export function BatchDistributeDialog({
     [articleIds.join(",")],
   );
   const [selected, setSelected] = useState<ChannelId[]>([]);
-  const [mode, setMode] = useState<Mode>("draft");
   const [ready, setReady] = useState(false);
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
@@ -90,7 +76,6 @@ export function BatchDistributeDialog({
       .then((value) => {
         if (!mounted) return;
         setSelected(value.selected);
-        setMode(value.mode);
       })
       .catch((e) => mounted && setError(messageOf(e)))
       .finally(() => mounted && setReady(true));
@@ -98,13 +83,10 @@ export function BatchDistributeDialog({
       mounted = false;
     };
   }, []);
-  const choose = (next: ChannelId[], nextMode = mode) => {
+  const choose = (next: ChannelId[]) => {
     setSelected(next);
-    setMode(nextMode);
     setFailures({});
-    void savePublishSelection(next, nextMode).catch((e) =>
-      setError(messageOf(e)),
-    );
+    void savePublishSelection(next).catch((e) => setError(messageOf(e)));
   };
   const variantOf = (article: Article, channel: ChannelId) =>
     data?.variants.find(
@@ -122,7 +104,7 @@ export function BatchDistributeDialog({
             variantOf(article, channel) ?? newVariant(article, channel),
           );
           const reason = duplicateReason(
-            { channel, mode, snapshot },
+            { channel, mode: "fill", snapshot },
             data.tasks,
             data.receipts,
           );
@@ -133,7 +115,7 @@ export function BatchDistributeDialog({
     return () => {
       stopped = true;
     };
-  }, [data, selected.join(","), mode]);
+  }, [data, selected.join(",")]);
   const columns = automatic.filter((c) => selected.includes(c.id));
   const cell = (article: Article, channel: ChannelId) => {
     const key = cellKey(article.id, channel);
@@ -141,7 +123,7 @@ export function BatchDistributeDialog({
       article,
       variantOf(article, channel),
       channel,
-      mode,
+      "fill",
     );
     const reason = failures[key]
       ? failures[key]
@@ -167,8 +149,8 @@ export function BatchDistributeDialog({
       .filter((c) => cell(article, c.id).ok)
       .map((c) => ({ article, channel: c.id })),
   );
-  const submit = async (start: boolean) => {
-    setBusy(start ? "start" : "queue");
+  const submit = async () => {
+    setBusy("start");
     setError("");
     const failed: Record<string, string> = {};
     const created: string[] = [];
@@ -198,13 +180,13 @@ export function BatchDistributeDialog({
         }
         if (!prepared.length) continue;
         try {
-          created.push(...(await enqueue(prepared, mode)).map((t) => t.id));
+          created.push(...(await enqueue(prepared, "fill")).map((t) => t.id));
         } catch (e) {
           for (const { snapshot } of prepared)
             failed[cellKey(article.id, snapshot.channel)] = messageOf(e);
         }
       }
-      if (start && created.length) {
+      if (isExtension() && created.length) {
         try {
           await command({ type: "run", ids: created });
         } catch (e) {
@@ -212,10 +194,7 @@ export function BatchDistributeDialog({
         }
       }
       setFailures(failed);
-      if (created.length)
-        notify(
-          `已创建 ${created.length} 个分发任务${start ? "并开始处理" : ""}。`,
-        );
+      if (created.length) notify(`已创建 ${created.length} 个填入任务。`);
       if (Object.keys(failed).length)
         setError(
           `${Object.keys(failed).length} 项未能加入队列，原因已标在表格中。其余任务已创建。`,
@@ -239,35 +218,6 @@ export function BatchDistributeDialog({
       wide
     >
       <div className="batch-options">
-        <div>
-          <span className="field-title">分发方式</span>
-          <Segmented
-            label="分发方式"
-            value={mode}
-            disabled={!!busy || !ready}
-            onChange={(next) => choose(selected, next)}
-            options={[
-              {
-                id: "draft",
-                label: (
-                  <>
-                    <FileCheck2 size={16} />
-                    保存草稿
-                  </>
-                ),
-              },
-              {
-                id: "publish",
-                label: (
-                  <>
-                    <Send size={16} />
-                    准备发布，手动确认
-                  </>
-                ),
-              },
-            ]}
-          />
-        </div>
         <div>
           <span className="field-title">
             平台
@@ -373,31 +323,23 @@ export function BatchDistributeDialog({
         缺少信息的项目会跳过。点击稿件标题可打开补充；在稿件里填写“通用发布信息”后，所有平台都会使用。
       </p>
       <footer className="modal-actions">
+        <span className="muted">填入后，在各平台编辑、存草稿或发布。</span>
         <span className="muted">
           {busy && busy.startsWith("正在")
             ? busy
             : `${going.length} / ${total} 项就绪`}
         </span>
         <button
-          className="text-button"
-          disabled={!!busy || !going.length}
-          onClick={() => void submit(false)}
-        >
-          加入队列，稍后执行
-        </button>
-        <button
           className="primary"
           disabled={!!busy || !going.length}
-          onClick={() => void submit(true)}
+          onClick={() => void submit()}
         >
           {busy ? (
             <LoaderCircle className="spin" size={17} />
           ) : (
             <Send size={16} />
           )}
-          {mode === "publish"
-            ? `准备 ${going.length} 项，停在发布前`
-            : `保存 ${going.length} 份平台草稿`}
+          {busy ? "正在准备内容…" : "填入平台"}
         </button>
       </footer>
     </Modal>

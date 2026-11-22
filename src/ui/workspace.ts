@@ -13,6 +13,7 @@ export const openTaskStates: TaskState[] = [
   "preparing",
   "submitting",
   "verifying",
+  "filled",
   "awaiting_publish",
   "awaiting_review",
   "submitted",

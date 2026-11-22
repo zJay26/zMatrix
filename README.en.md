@@ -30,7 +30,7 @@ v0.5.0 redesigns the interface and distribution flow: tags, summary and cover ar
 
 Keep a master draft, tailor titles and content for each platform, prepare image posts, and track the work locally.
 
-**Master draft → shared publishing details filled in once → pick platforms and distribute in one step → manual publication → registration and tracking**
+**Master draft → shared publishing details filled in once → fill selected platform editors → edit, save a draft or publish on each site → registration and tracking**
 
 ![zMatrix: one draft, a voice for every platform](docs/assets/hero.png)
 

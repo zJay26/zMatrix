@@ -261,7 +261,7 @@ export function adapterFor(channel: ChannelId): PlatformAdapter {
         problems: data.problems ?? [],
       };
     },
-    async prepare(snapshot, content, taskId, onTab) {
+    async fill(snapshot, content, taskId, onTab) {
       if (spec.manual) throw new Error("LINUX DO 请使用人工发布辅助。");
       let tabId: number;
       if (cnblogs) {
@@ -301,7 +301,7 @@ export function adapterFor(channel: ChannelId): PlatformAdapter {
       }
       const probe = await callPage(tabId, { action: "probe", channel });
       if (probe.problems?.length) throw new Error(probe.problems.join("；"));
-      await callPage(tabId, {
+      const filled = await callPage(tabId, {
         action: "fill",
         channel,
         snapshot,
@@ -309,50 +309,11 @@ export function adapterFor(channel: ChannelId): PlatformAdapter {
         taskId,
         protectedCnblogs: cnblogs,
       });
-      return { channel, taskId, tabId };
-    },
-    async saveDraft(context, snapshot, content) {
-      if (cnblogs) {
-        await armCnblogsHandoff(context.tabId, context.taskId);
-        return {
-          status: "awaiting_review",
-          editorUrl: (await chrome.tabs.get(context.tabId)).url,
-          detail:
-            "博客园内容已填充，发布保护保持开启。请在原站亲自点击“存为草稿”，再核实结果。尚未保存草稿。",
-        };
-      }
-      const result = await callPage(context.tabId, {
-        action: "save",
-        channel,
-        snapshot,
-        content,
-      });
-      if (!result.draftId)
-        return {
-          status: "uncertain",
-          editorUrl: result.url,
-          detail: "已请求保存，但尚未识别到可重新打开的草稿 ID。",
-        };
-      return inspect(context, snapshot, content, true);
-    },
-    async preparePublish(context, snapshot, content) {
-      if (cnblogs) await requireCnblogsGuard(context.tabId, context.taskId);
-      const preparation = await callPage(context.tabId, {
-        action: "prepare-publish",
-        channel,
-        snapshot,
-        content,
-        protectedCnblogs: cnblogs,
-      });
-      if (cnblogs) await armCnblogsHandoff(context.tabId, context.taskId);
+      if (cnblogs) await armCnblogsHandoff(tabId, taskId);
       return {
-        status: preparation.readyToPublish
-          ? "awaiting_publish"
-          : "awaiting_review",
-        editorUrl: preparation.url,
-        detail:
-          preparation.preparationDetail ??
-          "已填充编辑器；发布设置仍待核对。最终发布由你手动完成。",
+        status: "filled",
+        editorUrl: filled.url,
+        detail: "内容已填入，请在原站继续编辑、存草稿或发布。",
       };
     },
     verify: (context, snapshot, content, mode = "draft") =>

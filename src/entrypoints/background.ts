@@ -203,7 +203,7 @@ export default defineBackground(() => {
         let mutated = false;
         try {
           const adapter = adapterFor(task.channel);
-          const context = await adapter.prepare(
+          const receipt = await adapter.fill(
             task.snapshot,
             task.prepared,
             id,
@@ -216,34 +216,6 @@ export default defineBackground(() => {
               );
             },
           );
-          if (pauseRequested) {
-            await patchTask(
-              id,
-              { state: "uncertain", step: "已暂停，编辑器中可能存在草稿" },
-              "暂停后需要核实草稿",
-            );
-            break;
-          }
-          await patchTask(
-            id,
-            task.mode === "draft"
-              ? { state: "submitting", step: "准备向平台保存草稿" }
-              : {
-                  state: "preparing",
-                  step: "检查发布准备，最终提交由用户完成",
-                },
-            task.mode === "draft"
-              ? "准备向平台提交"
-              : "停在发布前，不执行最终提交",
-          );
-          const receipt =
-            task.mode === "draft"
-              ? await adapter.saveDraft(context, task.snapshot, task.prepared)
-              : await adapter.preparePublish(
-                  context,
-                  task.snapshot,
-                  task.prepared,
-                );
           task = (await db.tasks.get(id))!;
           await record(task, receipt);
         } catch (error) {
@@ -386,12 +358,12 @@ export default defineBackground(() => {
               receipt.status === "uncertain" &&
               !receipt.remoteId &&
               !receipt.url &&
-              (task.state === "awaiting_publish" ||
+              (task.state === "filled" ||
+                task.state === "awaiting_publish" ||
                 task.state === "awaiting_review")
             ) {
               receipt.status = task.state;
-              receipt.detail =
-                "尚未核实到发布结果，保留等待状态。最终发布需在原站手动完成。";
+              receipt.detail = "尚未核实到原站结果，可回到平台编辑器继续处理。";
             }
             await record(task, receipt);
             return { ok: true };

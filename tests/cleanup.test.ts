@@ -126,7 +126,7 @@ describe("清理与数据保护", () => {
     try {
       await restoreBackup(await exportBackup(db), target);
       await expect(enqueue([f], "publish", target)).rejects.toThrow("已有任务");
-      await expect(enqueue([f], "draft", target)).resolves.toHaveLength(1);
+      await expect(enqueue([f], "fill", target)).rejects.toThrow("防重记录");
     } finally {
       await target.delete();
     }

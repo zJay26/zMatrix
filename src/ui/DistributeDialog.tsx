@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import {
   Send,
-  FileCheck2,
   LoaderCircle,
   Layers,
   Check,
@@ -24,7 +23,7 @@ import { freezeSnapshot, newVariant, resolveContent } from "../core/variants";
 import { conversionRanges, prepareContent, readiness } from "../core/render";
 import { duplicateReason, enqueue } from "../core/tasks";
 import { channelState } from "../core/distribution";
-import type { ChannelId, Mode, PreparedContent, Snapshot } from "../core/model";
+import type { ChannelId, PreparedContent, Snapshot } from "../core/model";
 import { messageOf } from "../core/model";
 import {
   Modal,
@@ -68,7 +67,6 @@ export function DistributeDialog({
   const notify = useNotify();
   const flush = onFlush ?? draft.flush;
   const [selected, setSelected] = useState<ChannelId[]>([]);
-  const [mode, setMode] = useState<Mode>("draft");
   const [ready, setReady] = useState(false);
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
@@ -95,15 +93,12 @@ export function DistributeDialog({
     sharedEditor.current?.flush();
     platformEditor.current?.flush();
   };
-  const changeSelection = (next: ChannelId[], nextMode = mode) => {
+  const changeSelection = (next: ChannelId[]) => {
     commitFields();
     setError("");
     setFailures({});
     setSelected(next);
-    setMode(nextMode);
-    void savePublishSelection(next, nextMode).catch((e) =>
-      setError(messageOf(e)),
-    );
+    void savePublishSelection(next).catch((e) => setError(messageOf(e)));
   };
   useEffect(() => {
     let mounted = true;
@@ -111,7 +106,6 @@ export function DistributeDialog({
       .then((value) => {
         if (!mounted) return;
         setSelected(value.selected);
-        setMode(value.mode);
       })
       .catch((e) => mounted && setError(messageOf(e)))
       .finally(() => mounted && setReady(true));
@@ -129,7 +123,7 @@ export function DistributeDialog({
   };
   useEffect(refreshAccess, []);
   // Exact-version checks need the frozen fingerprint, so they run after edits settle.
-  const version = JSON.stringify([article, variants, mode, selected]);
+  const version = JSON.stringify([article, variants, selected]);
   useEffect(() => {
     let stopped = false;
     const timer = setTimeout(() => {
@@ -142,7 +136,7 @@ export function DistributeDialog({
             variants[id] ?? newVariant(article, id),
           );
           const reason = duplicateReason(
-            { channel: id, mode, snapshot },
+            { channel: id, mode: "fill", snapshot },
             tasks,
             receipts ?? new Set(),
           );
@@ -168,7 +162,7 @@ export function DistributeDialog({
 
   const rows = automatic.map((channel) => {
     const variant = variants[channel.id];
-    const issues = readiness(article, variant, channel.id, mode);
+    const issues = readiness(article, variant, channel.id, "fill");
     const disconnected = isExtension() && access[channel.id] === false;
     const duplicate = duplicates[channel.id];
     return {
@@ -192,8 +186,8 @@ export function DistributeDialog({
     if (await flush()) onClose();
     else setError("发布信息尚未保存，请先处理保存错误。");
   };
-  const submit = async (start: boolean) => {
-    setBusy(start ? "start" : "queue");
+  const submit = async () => {
+    setBusy("start");
     setError("");
     setFailures({});
     try {
@@ -208,7 +202,7 @@ export function DistributeDialog({
             draft.articleRef.current,
             draft.currentVariant(row.channel.id),
             row.channel.id,
-            mode,
+            "fill",
           ).length,
       );
       if (!targets.length)
@@ -227,7 +221,7 @@ export function DistributeDialog({
           (await db.variants.get(`${current.id}/${id}`)) ??
           newVariant(current, id);
         const snapshot = await freezeSnapshot(current, variant);
-        const problems = readiness(current, variant, id, mode);
+        const problems = readiness(current, variant, id, "fill");
         if (problems.length) {
           failed[id] = problems.join("；");
           continue;
@@ -245,19 +239,15 @@ export function DistributeDialog({
           "部分平台的内容还不能分发，已在对应平台标出原因。处理后重试，或先取消勾选。",
         );
       }
-      const created = await enqueue(prepared, mode);
-      if (start) {
+      const created = await enqueue(prepared, "fill");
+      if (isExtension()) {
         try {
           await command({ type: "run", ids: created.map((t) => t.id) });
         } catch (e) {
           await db.meta.put({ key: "queueError", value: messageOf(e) });
         }
       }
-      notify(
-        start
-          ? `已开始处理 ${created.length} 个平台，进度见发布队列。`
-          : `${created.length} 个平台已加入队列。`,
-      );
+      notify(`已创建 ${created.length} 个填入任务。`);
       onCreated();
       onClose();
     } catch (e) {
@@ -281,37 +271,6 @@ export function DistributeDialog({
     >
       <div className="distribute">
         <aside className="distribute-side">
-          <div className="distribute-mode">
-            <span className="field-title">分发方式</span>
-            <Segmented
-              label="分发方式"
-              value={mode}
-              disabled={!!busy || !ready}
-              onChange={(next) => changeSelection(selected, next)}
-              options={[
-                {
-                  id: "draft",
-                  title: "把内容存进各平台的草稿箱",
-                  label: (
-                    <>
-                      <FileCheck2 size={16} />
-                      保存草稿
-                    </>
-                  ),
-                },
-                {
-                  id: "publish",
-                  title: "填好内容和发布设置，停在发布按钮前，由你点击发布",
-                  label: (
-                    <>
-                      <Send size={16} />
-                      准备发布，手动确认
-                    </>
-                  ),
-                },
-              ]}
-            />
-          </div>
           <button
             type="button"
             className={`target shared-target ${focus === "shared" ? "focused" : ""}`}
@@ -691,33 +650,23 @@ export function DistributeDialog({
         </section>
       </div>
       <footer className="modal-actions">
+        <span className="muted">填入后，在各平台编辑、存草稿或发布。</span>
         <span className="muted">
           {!selected.length
             ? "勾选要分发的平台"
             : `${going.length} 个平台就绪${blocked ? ` · ${blocked} 个暂不分发` : ""}`}
         </span>
         <button
-          className="text-button"
-          disabled={!!busy || !ready || !chosen.length}
-          onClick={() => void submit(false)}
-        >
-          加入队列，稍后执行
-        </button>
-        <button
           className="primary"
-          disabled={!!busy || !ready || !chosen.length}
-          onClick={() => void submit(true)}
+          disabled={!!busy || !ready || !going.length}
+          onClick={() => void submit()}
         >
           {busy ? (
             <LoaderCircle className="spin" size={17} />
           ) : (
             <Send size={16} />
           )}
-          {busy
-            ? "正在准备内容…"
-            : mode === "publish"
-              ? `准备 ${going.length} 个平台，停在发布前`
-              : `保存 ${going.length} 份平台草稿`}
+          {busy ? "正在准备内容…" : "填入平台"}
         </button>
       </footer>
     </Modal>

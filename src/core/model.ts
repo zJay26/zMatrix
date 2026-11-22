@@ -18,7 +18,7 @@ export const channelIds = [
 ] as const;
 export type ChannelId = (typeof channelIds)[number];
 // Keep the stored "publish" value compatible; it now prepares a manual handoff only.
-export type Mode = "draft" | "publish";
+export type Mode = "fill" | "draft" | "publish";
 export interface Content {
   title: string;
   markdown: string;
@@ -89,6 +89,7 @@ export const taskStates = [
   "preparing",
   "submitting",
   "verifying",
+  "filled",
   "awaiting_publish",
   "awaiting_review",
   "draft_saved",

@@ -240,10 +240,10 @@ describe("稿件在各平台的状态", () => {
     ).toBeUndefined();
     expect(
       duplicateReason(
-        { channel: snapshot.channel, mode: "publish", snapshot },
+        { channel: snapshot.channel, mode: "fill", snapshot },
         tasks,
         new Set(),
       ),
-    ).toBeUndefined();
+    ).toContain("相同版本已有任务");
   });
 });
