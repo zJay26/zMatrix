@@ -84,6 +84,7 @@ const themes = [
 ] as const;
 // Tasks that wait for the creator rather than for the queue.
 const attentionStates = [
+  "filled",
   "awaiting_publish",
   "awaiting_review",
   "failed",

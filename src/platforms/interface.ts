@@ -15,6 +15,7 @@ export interface Context {
 }
 export interface Receipt {
   status:
+    | "filled"
     | "draft_saved"
     | "submitted"
     | "reviewing"
@@ -39,21 +40,11 @@ export interface PlatformAdapter {
     comments: "unverified" | "verified" | "unsupported";
   };
   checkSession(): Promise<Probe>;
-  prepare(
+  fill(
     snapshot: Snapshot,
     content: PreparedContent,
     taskId: string,
     onTab: (id: number) => Promise<void>,
-  ): Promise<Context>;
-  saveDraft(
-    context: Context,
-    snapshot: Snapshot,
-    content: PreparedContent,
-  ): Promise<Receipt>;
-  preparePublish(
-    context: Context,
-    snapshot: Snapshot,
-    content: PreparedContent,
   ): Promise<Receipt>;
   verify(
     context: Context,

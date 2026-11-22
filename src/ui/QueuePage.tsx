@@ -60,6 +60,7 @@ const needsVerify = (task: Task) =>
     "uncertain",
     "submitted",
     "reviewing",
+    "filled",
     "awaiting_publish",
     "awaiting_review",
   ].includes(task.state) ||
@@ -156,7 +157,7 @@ export function QueuePage({ onOpenLibrary }: { onOpenLibrary?: () => void }) {
       <div className="page-heading">
         <div>
           <h1>发布队列</h1>
-          <p>任务逐个执行；最终发布始终由你在原站点击确认。</p>
+          <p>逐个填入平台编辑器后，你可以在各平台继续编辑、存草稿或发布。</p>
         </div>
         <div className="button-row">
           <button
@@ -310,9 +311,11 @@ export function QueuePage({ onOpenLibrary }: { onOpenLibrary?: () => void }) {
                   <div>
                     <h3>{untitled(first.snapshot.title)}</h3>
                     <span className="muted">
-                      {first.mode === "draft"
-                        ? "保存草稿"
-                        : "准备发布 · 手动确认"}{" "}
+                      {first.mode === "fill" || canStart(first)
+                        ? "填入平台"
+                        : first.mode === "draft"
+                          ? "保存草稿"
+                          : "准备发布"}{" "}
                       · {timeLabel(first.createdAt)} · 版本{" "}
                       {first.snapshot.revision}
                     </span>
@@ -356,6 +359,7 @@ export function QueuePage({ onOpenLibrary }: { onOpenLibrary?: () => void }) {
                           {task.tabId && isExtension() && (
                             <button
                               className={
+                                task.state === "filled" ||
                                 task.state === "awaiting_publish"
                                   ? "primary"
                                   : ""
@@ -365,7 +369,9 @@ export function QueuePage({ onOpenLibrary }: { onOpenLibrary?: () => void }) {
                               <MousePointerClick size={14} />
                               {task.state === "awaiting_publish"
                                 ? "去原站发布"
-                                : "回到原标签页"}
+                                : task.state === "filled"
+                                  ? "去原站处理"
+                                  : "回到原标签页"}
                             </button>
                           )}
                           {canStart(task) && (

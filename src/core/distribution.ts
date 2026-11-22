@@ -44,6 +44,7 @@ export function taskStatus(task: Task): ChannelStatus | undefined {
     case "submitting":
     case "verifying":
       return "running";
+    case "filled":
     case "awaiting_publish":
     case "awaiting_review":
       return "action";

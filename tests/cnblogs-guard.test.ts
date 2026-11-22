@@ -110,7 +110,7 @@ describe("博客园浏览器提交拦截", () => {
   it("在导航和填充前安装保护，仅精确图片上传接口可写", async () => {
     const f = await fixture("cnblogs:article");
     const adapter = adapterFor("cnblogs:article");
-    const context = await adapter.prepare(
+    const receipt = await adapter.fill(
       f.snapshot,
       f.prepared,
       "task",
@@ -143,12 +143,7 @@ describe("博客园浏览器提交拦截", () => {
       requestMethods: ["post"],
       urlFilter: "|https://upload.cnblogs.com/v2/images/cors-upload|",
     });
-    const receipt = await adapter.preparePublish(
-      context,
-      f.snapshot,
-      f.prepared,
-    );
-    expect(receipt.status).toBe("awaiting_publish");
+    expect(receipt.status).toBe("filled");
     expect(calls).not.toContain("save");
     expect(calls).not.toContain("publish");
     expect(calls).not.toContain("release");
@@ -160,7 +155,7 @@ describe("博客园浏览器提交拦截", () => {
     ).mockRejectedValue(new Error("permission denied"));
     const f = await fixture("cnblogs:article");
     await expect(
-      adapterFor("cnblogs:article").prepare(
+      adapterFor("cnblogs:article").fill(
         f.snapshot,
         f.prepared,
         "task",
@@ -170,19 +165,6 @@ describe("博客园浏览器提交拦截", () => {
     expect(chrome.tabs.update).not.toHaveBeenCalled();
     expect(chrome.scripting.executeScript).not.toHaveBeenCalled();
     expect(await getCnblogsGuard(7)).toBeUndefined();
-  });
-  it("保存草稿也保持拦截并交接原站，不能误报保存成功", async () => {
-    await protectCnblogsTab(7, "task");
-    const f = await fixture("cnblogs:article");
-    const receipt = await adapterFor("cnblogs:article").saveDraft(
-      { tabId: 7, taskId: "task", channel: "cnblogs:article" },
-      f.snapshot,
-      f.prepared,
-    );
-    expect(receipt.status).toBe("awaiting_review");
-    expect(receipt.detail).toContain("尚未保存草稿");
-    expect(chrome.scripting.executeScript).not.toHaveBeenCalled();
-    expect(rules).toHaveLength(2);
   });
   it("重新进入后台仍能读取保护，缺失或被缩小的规则一律拒绝", async () => {
     const guard = await protectCnblogsTab(7, "task");

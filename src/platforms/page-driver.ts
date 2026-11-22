@@ -74,9 +74,9 @@ export async function pageDriver(request: PageRequest): Promise<PageResult> {
       throw new Error("标签页已离开目标平台，操作停止。");
     if (request.action === "publish")
       throw new Error("自动发布已禁用。请在原站手动完成最终发布。");
+    if (request.action === "save")
+      throw new Error("保存草稿需由用户在原站手动点击。");
     if (platform === "cnblogs") {
-      if (request.action === "save")
-        throw new Error("博客园保存草稿需由用户在原站手动点击。");
       if (
         ["fill", "prepare-publish"].includes(request.action) &&
         (!request.protectedCnblogs ||
@@ -528,14 +528,6 @@ export async function pageDriver(request: PageRequest): Promise<PageResult> {
       });
     };
     if (request.action === "inspect") return inspect();
-    if (request.action === "save") {
-      const save = button(saveLabels);
-      if (save) click(save);
-      else if (!["zhihu", "juejin"].includes(platform))
-        throw new Error("未识别到保存草稿入口，不能把填充内容当作草稿已保存。");
-      await pause(1800);
-      return inspect();
-    }
     if (request.action === "prepare-publish") {
       if (!snapshot || !content) throw new Error("缺少发布版本");
       if (normalized(value(title())) !== normalized(snapshot.title))

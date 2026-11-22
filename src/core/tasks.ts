@@ -15,6 +15,7 @@ export const stateNames: Record<TaskState, string> = {
   preparing: "准备内容",
   submitting: "正在提交",
   verifying: "核实结果",
+  filled: "已填入，待原站处理",
   awaiting_publish: "等待手动发布",
   awaiting_review: "发布设置待核对",
   draft_saved: "草稿已保存",
@@ -117,6 +118,12 @@ export function recoverTask(task: Task): Task {
       : "执行中断，可主动继续。",
   };
 }
+function receiptKeys(task: Pick<Task, "channel" | "snapshot">) {
+  // Older backups can carry separate receipts for the two previous modes.
+  return ["fill", "draft", "publish"].map(
+    (mode) => `${task.channel}/${mode}/${task.snapshot.fingerprint}`,
+  );
+}
 // Why this exact version cannot be queued again, if it cannot.
 export function duplicateReason(
   candidate: Pick<Task, "channel" | "mode" | "snapshot">,
@@ -133,23 +140,18 @@ export function duplicateReason(
   >[],
   receipts: Set<string>,
 ) {
-  if (
-    receipts.has(
-      `${candidate.channel}/${candidate.mode}/${candidate.snapshot.fingerprint}`,
-    )
-  )
-    return "相同版本已有任务防重记录，请核实原站，避免重复发布。";
+  if (receiptKeys(candidate).some((key) => receipts.has(key)))
+    return "相同版本已有任务防重记录，请核实原站，避免重复填入。";
   if (
     existing.some(
       (e) =>
         e.snapshot.fingerprint === candidate.snapshot.fingerprint &&
         e.channel === candidate.channel &&
-        e.mode === candidate.mode &&
         (!["cancelled", "failed"].includes(e.state) ||
           hasRemoteActivity(e as Task)),
     )
   )
-    return "相同版本已有任务。请先查看任务记录，避免重复发布。";
+    return "相同版本已有任务。请先查看任务记录，避免重复填入。";
   return undefined;
 }
 export async function enqueue(
@@ -213,7 +215,22 @@ export async function claimTask(
       if (!task || !canStart(task)) return undefined;
       const article = await database.articles.get(task.snapshot.articleId);
       if (!article || article.trashedAt) return undefined;
-      if (await database.taskReceipts.get(taskReceipt(task).id)) {
+      const recorded = (
+        await database.taskReceipts.bulkGet(receiptKeys(task))
+      ).some(Boolean);
+      const previouslyStarted =
+        task.mode !== "fill" &&
+        (await database.tasks
+          .filter(
+            (other) =>
+              other.id !== id &&
+              other.channel === task.channel &&
+              other.snapshot.fingerprint === task.snapshot.fingerprint &&
+              !canStart(other) &&
+              (other.state !== "cancelled" || hasRemoteActivity(other)),
+          )
+          .first());
+      if (recorded || previouslyStarted) {
         await database.tasks.update(id, {
           state: "cancelled",
           step: "相同版本已有防重记录，已取消重复任务",
@@ -224,6 +241,7 @@ export async function claimTask(
       }
       const claimed: Task = {
         ...task,
+        mode: "fill",
         state: "preparing",
         owner,
         updatedAt: Date.now(),

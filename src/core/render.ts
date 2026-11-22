@@ -221,7 +221,7 @@ export async function prepareContent(
 }
 export function preflight(
   snapshot: Snapshot,
-  mode: "draft" | "publish",
+  mode: "fill" | "draft" | "publish",
 ): string[] {
   const errors: string[] = [];
   const channel = channelFor(snapshot.channel);
@@ -241,6 +241,12 @@ export function preflight(
     !/^[a-f0-9]{64}$/.test(snapshot.metadata.coverId)
   )
     errors.push("封面图片引用不合法");
+  if (
+    mode === "fill" &&
+    channel.format === "images" &&
+    !snapshot.imageIds.length
+  )
+    errors.push("图文笔记至少需要一张配图");
   if (mode === "publish")
     for (const field of channel.required) {
       if (field === "tags" && !snapshot.metadata.tags.length)
@@ -257,7 +263,7 @@ export function readiness(
   article: Article,
   variant: Variant | undefined,
   channel: ChannelId,
-  mode: "draft" | "publish",
+  mode: "fill" | "draft" | "publish",
 ) {
   return preflight(
     {

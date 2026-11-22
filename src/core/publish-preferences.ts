@@ -1,6 +1,6 @@
 import { db } from "./db";
 import { channels } from "../platforms/catalog";
-import type { ChannelId, Mode } from "./model";
+import type { ChannelId } from "./model";
 
 export function normalizePublishSelection(value: unknown) {
   const source =
@@ -18,7 +18,6 @@ export function normalizePublishSelection(value: unknown) {
           ),
         ]
       : [],
-    mode: source.mode === "publish" ? ("publish" as Mode) : ("draft" as Mode),
   };
 }
 export async function getPublishSelection(database = db) {
@@ -28,11 +27,10 @@ export async function getPublishSelection(database = db) {
 }
 export async function savePublishSelection(
   selected: ChannelId[],
-  mode: Mode,
   database = db,
 ) {
   await database.meta.put({
     key: "publishSelection",
-    value: normalizePublishSelection({ selected, mode }),
+    value: normalizePublishSelection({ selected }),
   });
 }
